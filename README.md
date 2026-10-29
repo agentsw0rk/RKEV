@@ -114,6 +114,15 @@ Mit dem Feature `server` beantwortet RKev dasselbe Wire-Format über HTTP auf
 Code-Änderung gegen RKev: `RKEV_BASE_URL` auf den Server zeigen lassen, fertig.
 
 ```bash
+scripts/start-http.sh                        # ~/models/kev-0.6b auf 127.0.0.1:8090
+scripts/start-http.sh --host 0.0.0.0         # von außen erreichbar, z.B. im Container
+```
+
+Das Skript findet das Basismodell über die `adapter_config.json` des Checkpoints
+(wie `scripts/local.sh --fetch` es ablegt), baut `serve` im Release-Modus und
+startet es. Direkt geht es auch:
+
+```bash
 cargo run --release --features candle,server --example serve -- \
     --base models/qwen3-0.6b-base --checkpoint models/kev-0.6b \
     --listen 0.0.0.0:8090        # Standard: 127.0.0.1:8090
@@ -172,6 +181,8 @@ scripts/local.sh --checkpoint <dir> \
 scripts/sweep.sh --base <dir> --checkpoint <dir>     # CPU und Metal durchmessen
 scripts/parity.sh --base <dir> --checkpoint <dir>    # gegen einen Server aufzeichnen
 scripts/parity.sh --check-only --base <dir> --checkpoint <dir>   # und offline nachprüfen
+scripts/start-http.sh                           # HTTP-Server vor ~/models/kev-0.6b auf :8090
+scripts/start-http.sh --host 0.0.0.0 --api-key <key>   # von außen erreichbar, mit Key
 ```
 
 `scripts/local.sh --help` listet den Rest. `KEV_HF` zeigt die Downloads auf einen
