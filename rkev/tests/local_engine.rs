@@ -625,3 +625,22 @@ fn without_isolation_no_token_carries_a_slot() {
     assert!(log.lock().unwrap().passes[0].options.is_empty());
     assert!(!log.lock().unwrap().passes[0].as_pass().is_isolated());
 }
+
+#[test]
+fn a_choice_without_options_is_refused_and_leaves_the_engine_working() {
+    // Once a panic inside the forward pass: it poisoned the backend's lock, and
+    // every request after it failed, so one bad request took a server down.
+    let (stub, _, _) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head());
+    let empty = SystemOneRequest::new("a ticket").ask("q", Choice::new("Pick one"));
+
+    let error = engine.system_one_blocking(&empty).unwrap_err();
+
+    assert!(error.is_validation(), "got {error:?}");
+    assert!(
+        error.to_string().contains("\"q\""),
+        "names the question: {error}"
+    );
+    let fine = SystemOneRequest::new("a ticket").ask("q", Noul::new("Late?"));
+    assert!(engine.system_one_blocking(&fine).is_ok());
+}

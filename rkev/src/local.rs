@@ -327,6 +327,7 @@ impl LocalEngine {
     /// from their own blocking context.
     pub fn system_one_blocking(&self, request: &SystemOneRequest) -> Result<SystemOneResponse> {
         let started = Instant::now();
+        validate(request)?;
         let (record, plans) = prompt::plan(request);
         let mut backend = self.locked()?;
 
@@ -351,6 +352,7 @@ impl LocalEngine {
         requests: &[SystemOneRequest],
     ) -> Result<Vec<SystemOneResponse>> {
         let started = Instant::now();
+        requests.iter().try_for_each(validate)?;
         let planned: Vec<(Record, Vec<Plan>)> = requests.iter().map(prompt::plan).collect();
         let mut backend = self.locked()?;
 
@@ -495,6 +497,7 @@ impl LocalEngine {
         request: &SystemOneRequest,
     ) -> Result<SystemOneResponse> {
         let started = Instant::now();
+        validate(request)?;
         let (record, plans) = prompt::plan(request);
         let mut backend = self.locked()?;
 
@@ -701,4 +704,20 @@ where
     tokio::task::spawn_blocking(work)
         .await
         .map_err(|e| Error::Engine(format!("the forward pass did not finish: {e}")))?
+}
+
+/// What the request types allow but no forward pass can answer, refused before
+/// the backend is touched: a panic in there poisons its lock for every later
+/// call, so a malformed request must never reach it.
+fn validate(request: &SystemOneRequest) -> Result<()> {
+    for (id, question) in &request.questions {
+        if let crate::Question::Choice(choice) = question {
+            if choice.criteria.is_empty() {
+                return Err(Error::Invalid(format!(
+                    "question {id:?} is a choice with no options; it needs 1 to 255"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
