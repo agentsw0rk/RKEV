@@ -221,6 +221,19 @@ fn a_response_serialises_back_into_the_readme_shape() {
 }
 
 #[test]
+fn a_response_without_latency_omits_the_field() {
+    // Optional on the way in, so absent on the way out rather than `null`.
+    let response: SystemOneResponse = serde_json::from_str(
+        r#"{"model":"kev-latest","answers":{"a":{"type":"noul","noul":0.5}}}"#,
+    )
+    .unwrap();
+
+    let sent = serde_json::to_value(&response).unwrap();
+
+    assert!(sent.get("latency_ms").is_none(), "sent: {sent}");
+}
+
+#[test]
 fn a_request_survives_a_round_trip_through_json() {
     // The request types deserialise as well as serialise, so a recorded request
     // can be replayed - which is what examples/parity.rs does with the body the
