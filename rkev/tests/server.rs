@@ -193,3 +193,18 @@ async fn a_request_the_backend_rejects_is_a_400_that_says_why() {
         "error: {error}"
     );
 }
+
+#[tokio::test]
+async fn a_body_that_is_not_json_is_a_400_in_the_same_error_shape() {
+    let address = start(Server::new(Canned(shipping()))).await;
+
+    let reply = post(address, "/v1/systemone", &[], r#"{"state": "cut off"#).await;
+
+    assert_eq!(reply.status, 400, "body: {}", reply.body);
+    let error = &reply.json()["error"];
+    assert_eq!(error["type"], "invalid_request");
+    assert!(
+        !error["message"].as_str().unwrap().is_empty(),
+        "error: {error}"
+    );
+}

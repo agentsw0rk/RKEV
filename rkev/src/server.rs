@@ -11,6 +11,7 @@
 
 use std::io;
 
+use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -51,11 +52,18 @@ where
 
 async fn system_one<B>(
     State(backend): State<B>,
-    Json(request): Json<SystemOneRequest>,
+    body: Bytes,
 ) -> Result<Json<SystemOneResponse>, Failure>
 where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
+    // Parsed here rather than by axum's `Json`, whose rejections are plain text:
+    // a client should read every failure in the same shape.
+    let request: SystemOneRequest = serde_json::from_slice(&body).map_err(|e| Failure {
+        status: StatusCode::BAD_REQUEST,
+        kind: "invalid_request",
+        message: format!("the body is not a System One request: {e}"),
+    })?;
     Ok(Json(backend.system_one(&request).await?))
 }
 
