@@ -22,12 +22,13 @@ use axum::{Json, Router};
 use serde_json::json;
 use tokio::net::TcpListener;
 
-use crate::{Error, SystemOne, SystemOneRequest, SystemOneResponse};
+use crate::{Error, SystemOne, SystemOneRequest, SystemOneResponse, DEFAULT_MODEL};
 
 /// A System One server in front of one backend.
 pub struct Server<B> {
     backend: B,
     api_key: Option<String>,
+    models: Vec<String>,
 }
 
 impl<B> Server<B>
@@ -40,6 +41,7 @@ where
         Self {
             backend,
             api_key: None,
+            models: vec![DEFAULT_MODEL.to_string()],
         }
     }
 
@@ -51,11 +53,21 @@ where
         self
     }
 
+    /// A name a request's `model` may ask for. The server answers to
+    /// [`DEFAULT_MODEL`] (`kev-latest`) from the start, so a client that names
+    /// no particular checkpoint fits; any other name is a 404. A request without
+    /// a `model` is always served.
+    pub fn model_name(mut self, name: impl Into<String>) -> Self {
+        self.models.push(name.into());
+        self
+    }
+
     /// The routes, for a caller that wants to mount them in its own axum app.
     pub fn router(self) -> Router {
         let shared = Shared {
             backend: self.backend,
             authorization: self.api_key.map(|key| Arc::from(format!("Bearer {key}"))),
+            models: self.models.into(),
         };
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
@@ -74,6 +86,7 @@ where
 struct Shared<B> {
     backend: B,
     authorization: Option<Arc<str>>,
+    models: Arc<[String]>,
 }
 
 impl<B> Shared<B> {
@@ -111,6 +124,18 @@ where
         kind: "invalid_request",
         message: format!("the body is not a System One request: {e}"),
     })?;
+    if let Some(model) = &request.model {
+        if !shared.models.contains(model) {
+            return Err(Failure {
+                status: StatusCode::NOT_FOUND,
+                kind: "model_not_found",
+                message: format!(
+                    "this server does not serve {model:?}; it answers to {:?}",
+                    shared.models
+                ),
+            });
+        }
+    }
     Ok(Json(backend.system_one(&request).await?))
 }
 

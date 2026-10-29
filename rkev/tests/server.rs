@@ -292,3 +292,20 @@ async fn an_h2c_upgrade_offer_is_ignored_and_answered_over_http_1_1() {
     assert_eq!(reply.status, 200, "body: {}", reply.body);
     assert_eq!(reply.json()["answers"]["decision"]["choice"], "shipping");
 }
+
+#[tokio::test]
+async fn a_model_the_server_does_not_serve_is_a_404() {
+    let address = start(Server::new(Canned(shipping())).model_name("kev-0.6b")).await;
+    let mut request = choice_request();
+    request["model"] = json!("kev-4b");
+
+    let reply = post(address, "/v1/systemone", &[], &request.to_string()).await;
+
+    assert_eq!(reply.status, 404, "body: {}", reply.body);
+    let error = &reply.json()["error"];
+    assert_eq!(error["type"], "model_not_found");
+    assert!(
+        error["message"].as_str().unwrap().contains("kev-4b"),
+        "error: {error}"
+    );
+}
