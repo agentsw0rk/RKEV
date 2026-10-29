@@ -711,12 +711,15 @@ where
 /// call, so a malformed request must never reach it.
 fn validate(request: &SystemOneRequest) -> Result<()> {
     for (id, question) in &request.questions {
-        if let crate::Question::Choice(choice) = question {
-            if choice.criteria.is_empty() {
-                return Err(Error::Invalid(format!(
-                    "question {id:?} is a choice with no options; it needs 1 to 255"
-                )));
-            }
+        let (count, what) = match question {
+            crate::Question::Noul(_) => continue,
+            crate::Question::Choice(choice) => (choice.criteria.len(), "a choice with no options"),
+            crate::Question::Score(score) => (score.criteria.len(), "a score with no levels"),
+        };
+        if count == 0 {
+            return Err(Error::Invalid(format!(
+                "question {id:?} is {what}; it needs 1 to 255"
+            )));
         }
     }
     Ok(())

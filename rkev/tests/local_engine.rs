@@ -644,3 +644,15 @@ fn a_choice_without_options_is_refused_and_leaves_the_engine_working() {
     let fine = SystemOneRequest::new("a ticket").ask("q", Noul::new("Late?"));
     assert!(engine.system_one_blocking(&fine).is_ok());
 }
+
+#[test]
+fn a_score_without_levels_is_refused_before_the_forward_pass() {
+    let (stub, _, calls) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head());
+    let empty = SystemOneRequest::new("a ticket").ask("q", Score::new("How angry?"));
+
+    let error = engine.system_one_blocking(&empty).unwrap_err();
+
+    assert!(error.is_validation(), "got {error:?}");
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "the backend was not asked");
+}
