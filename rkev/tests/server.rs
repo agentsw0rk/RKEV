@@ -270,3 +270,25 @@ async fn with_a_key_set_only_that_exact_key_is_let_through() {
     assert_eq!(right.status, 200, "body: {}", right.body);
     assert_eq!(wrong.status, 401, "body: {}", wrong.body);
 }
+
+#[tokio::test]
+async fn an_h2c_upgrade_offer_is_ignored_and_answered_over_http_1_1() {
+    // What java.net.http.HttpClient adds to every request to an http:// URL.
+    let address = start(Server::new(Canned(shipping()))).await;
+    let java = [
+        "Connection: Upgrade, HTTP2-Settings",
+        "Upgrade: h2c",
+        "HTTP2-Settings: AAEAAEAAAAIAAAABAAMAAABkAAQBAAAAAAUAAEAA",
+    ];
+
+    let reply = post(
+        address,
+        "/v1/systemone",
+        &java,
+        &choice_request().to_string(),
+    )
+    .await;
+
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(reply.json()["answers"]["decision"]["choice"], "shipping");
+}
