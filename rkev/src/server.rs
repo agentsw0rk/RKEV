@@ -21,6 +21,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::json;
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 
 use crate::{Error, SystemOne, SystemOneRequest, SystemOneResponse, DEFAULT_MODEL};
 
@@ -29,6 +30,7 @@ pub struct Server<B> {
     backend: B,
     api_key: Option<String>,
     models: Vec<String>,
+    max_concurrent: Option<usize>,
 }
 
 impl<B> Server<B>
@@ -42,6 +44,7 @@ where
             backend,
             api_key: None,
             models: vec![DEFAULT_MODEL.to_string()],
+            max_concurrent: None,
         }
     }
 
@@ -62,12 +65,22 @@ where
         self
     }
 
+    /// Answer at most `n` requests at a time and refuse the rest with 503 at
+    /// once instead of queueing them. The exported client gives up after 60 s,
+    /// so an answer that waited for a slot would arrive to nobody. Unlimited
+    /// by default.
+    pub fn max_concurrent(mut self, n: usize) -> Self {
+        self.max_concurrent = Some(n);
+        self
+    }
+
     /// The routes, for a caller that wants to mount them in its own axum app.
     pub fn router(self) -> Router {
         let shared = Shared {
             backend: self.backend,
             authorization: self.api_key.map(|key| Arc::from(format!("Bearer {key}"))),
             models: self.models.into(),
+            permits: self.max_concurrent.map(|n| Arc::new(Semaphore::new(n))),
         };
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
@@ -87,6 +100,7 @@ struct Shared<B> {
     backend: B,
     authorization: Option<Arc<str>>,
     models: Arc<[String]>,
+    permits: Option<Arc<Semaphore>>,
 }
 
 impl<B> Shared<B> {
@@ -116,6 +130,15 @@ where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
     shared.authorize(&headers)?;
+    // Held until the answer is built, then dropped with it.
+    let _permit = match &shared.permits {
+        Some(permits) => Some(permits.clone().try_acquire_owned().map_err(|_| Failure {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            kind: "unavailable",
+            message: "every slot is answering a request; try again shortly".to_string(),
+        })?),
+        None => None,
+    };
     let backend = shared.backend;
     // Parsed here rather than by axum's `Json`, whose rejections are plain text:
     // a client should read every failure in the same shape.

@@ -6,6 +6,7 @@
 
 use std::future::Future;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use rkev::server::Server;
 use rkev::{
@@ -14,6 +15,7 @@ use rkev::{
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
 
 /// A backend that answers from a canned response, whatever it is asked.
 #[derive(Clone)]
@@ -48,6 +50,44 @@ impl SystemOne for Fails {
         _request: &SystemOneRequest,
     ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
         async move { Err((self.0)()) }
+    }
+
+    fn system_one_separate(
+        &self,
+        request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        self.system_one(request)
+    }
+}
+
+/// A backend that holds every request until the test releases it, and says when
+/// one has arrived, so a test can have a request in flight on purpose.
+#[derive(Clone)]
+struct Held {
+    arrived: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+impl Held {
+    fn new() -> Self {
+        Self {
+            arrived: Arc::new(Notify::new()),
+            release: Arc::new(Notify::new()),
+        }
+    }
+}
+
+#[allow(clippy::manual_async_fn)]
+impl SystemOne for Held {
+    fn system_one(
+        &self,
+        _request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        async move {
+            self.arrived.notify_one();
+            self.release.notified().await;
+            Ok(shipping())
+        }
     }
 
     fn system_one_separate(
@@ -358,4 +398,23 @@ async fn an_engine_failure_is_a_500_not_an_answer() {
 
     assert_eq!(reply.status, 500, "body: {}", reply.body);
     assert_eq!(reply.json()["error"]["type"], "internal");
+}
+
+#[tokio::test]
+async fn a_request_past_the_concurrency_limit_is_a_503_at_once() {
+    let held = Held::new();
+    let address = start(Server::new(held.clone()).max_concurrent(1)).await;
+    let body = choice_request().to_string();
+    let first = tokio::spawn({
+        let body = body.clone();
+        async move { post(address, "/v1/systemone", &[], &body).await }
+    });
+    held.arrived.notified().await;
+
+    let second = post(address, "/v1/systemone", &[], &body).await;
+
+    assert_eq!(second.status, 503, "body: {}", second.body);
+    assert_eq!(second.json()["error"]["type"], "unavailable");
+    held.release.notify_one();
+    assert_eq!(first.await.unwrap().status, 200);
 }
