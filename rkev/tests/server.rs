@@ -8,7 +8,9 @@ use std::future::Future;
 use std::net::SocketAddr;
 
 use rkev::server::Server;
-use rkev::{Answer, IndexMap, Result, SystemOne, SystemOneRequest, SystemOneResponse, Usage};
+use rkev::{
+    Answer, Error, IndexMap, Result, SystemOne, SystemOneRequest, SystemOneResponse, Usage,
+};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -24,6 +26,27 @@ impl SystemOne for Canned {
         _request: &SystemOneRequest,
     ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
         async move { Ok(self.0.clone()) }
+    }
+
+    fn system_one_separate(
+        &self,
+        request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        self.system_one(request)
+    }
+}
+
+/// A backend that rejects every request as invalid, with the given reason.
+#[derive(Clone)]
+struct Rejects(&'static str);
+
+#[allow(clippy::manual_async_fn)]
+impl SystemOne for Rejects {
+    fn system_one(
+        &self,
+        _request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        async move { Err(Error::Invalid(self.0.to_string())) }
     }
 
     fn system_one_separate(
@@ -152,4 +175,21 @@ async fn a_choice_request_is_answered_with_the_backends_answer() {
     let answer = &reply.json()["answers"]["decision"];
     assert_eq!(answer["type"], "choice");
     assert_eq!(answer["choice"], "shipping");
+}
+
+#[tokio::test]
+async fn a_request_the_backend_rejects_is_a_400_that_says_why() {
+    let reason = "questions.decision.criteria must have at least 1 option";
+    let address = start(Server::new(Rejects(reason))).await;
+
+    let reply = post(address, "/v1/systemone", &[], &choice_request().to_string()).await;
+
+    assert_eq!(reply.status, 400, "body: {}", reply.body);
+    assert_eq!(reply.header("content-type"), Some("application/json"));
+    let error = &reply.json()["error"];
+    assert_eq!(error["type"], "invalid_request");
+    assert!(
+        error["message"].as_str().unwrap().contains(reason),
+        "error: {error}"
+    );
 }

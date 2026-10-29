@@ -4,15 +4,22 @@
 //! Generic over the [`SystemOne`] seam rather than tied to
 //! [`LocalEngine`](crate::LocalEngine): the server needs no model, which is what
 //! lets `tests/server.rs` drive it over a backend with none in it.
+//!
+//! A failure is never an answer. Every status but 200 ends the caller's agent
+//! run, and its body says why in `{"error": {"type", "message"}}`, because the
+//! exported client passes status and body on in its error message.
 
 use std::io;
 
 use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
+use serde_json::json;
 use tokio::net::TcpListener;
 
-use crate::{SystemOne, SystemOneRequest, SystemOneResponse};
+use crate::{Error, SystemOne, SystemOneRequest, SystemOneResponse};
 
 /// A System One server in front of one backend.
 pub struct Server<B> {
@@ -45,16 +52,41 @@ where
 async fn system_one<B>(
     State(backend): State<B>,
     Json(request): Json<SystemOneRequest>,
-) -> Json<SystemOneResponse>
+) -> Result<Json<SystemOneResponse>, Failure>
 where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
-    // Errors get their status codes in the next step; until then a failure
-    // is a dropped connection, which no client mistakes for an answer.
-    Json(
-        backend
-            .system_one(&request)
-            .await
-            .expect("error mapping comes next"),
-    )
+    Ok(Json(backend.system_one(&request).await?))
+}
+
+/// What a client reads when there is no answer: a status, and in the body the
+/// error's `type` (what kind of failure) and `message` (the details).
+struct Failure {
+    status: StatusCode,
+    kind: &'static str,
+    message: String,
+}
+
+impl From<Error> for Failure {
+    fn from(error: Error) -> Self {
+        let (status, kind) = match error {
+            // 400 rather than kev.serve's 422: the API document says 400, and
+            // the exported client stops on either.
+            Error::Invalid(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            #[allow(unreachable_patterns)]
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+        };
+        Self {
+            status,
+            kind,
+            message: error.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for Failure {
+    fn into_response(self) -> Response {
+        let body = json!({ "error": { "type": self.kind, "message": self.message } });
+        (self.status, Json(body)).into_response()
+    }
 }
