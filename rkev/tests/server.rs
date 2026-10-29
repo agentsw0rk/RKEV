@@ -219,3 +219,28 @@ async fn with_a_key_set_a_request_without_it_is_a_401() {
     assert_eq!(reply.status, 401, "body: {}", reply.body);
     assert_eq!(reply.json()["error"]["type"], "unauthorized");
 }
+
+#[tokio::test]
+async fn with_a_key_set_only_that_exact_key_is_let_through() {
+    let server = Server::new(Canned(shipping())).api_key(Some("s3cret".to_string()));
+    let address = start(server).await;
+    let body = choice_request().to_string();
+
+    let right = post(
+        address,
+        "/v1/systemone",
+        &["Authorization: Bearer s3cret"],
+        &body,
+    )
+    .await;
+    let wrong = post(
+        address,
+        "/v1/systemone",
+        &["Authorization: Bearer s3cre"],
+        &body,
+    )
+    .await;
+
+    assert_eq!(right.status, 200, "body: {}", right.body);
+    assert_eq!(wrong.status, 401, "body: {}", wrong.body);
+}
