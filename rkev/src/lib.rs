@@ -75,6 +75,9 @@ pub mod qwen3;
 pub mod qwen3_5;
 #[cfg(feature = "local")]
 mod readout;
+/// System One over HTTP: any [`SystemOne`] backend on `POST /v1/systemone`.
+#[cfg(feature = "server")]
+pub mod server;
 mod system_one;
 mod types;
 #[cfg(feature = "candle")]

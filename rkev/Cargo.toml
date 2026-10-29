@@ -31,6 +31,9 @@ tokenizers = { version = "0.22", default-features = false, features = ["fancy-re
 # pickle. candle-core already depends on the same crate, and the entries torch
 # writes are stored, so no compression features are needed.
 zip = { version = "7", default-features = false, optional = true }
+# The HTTP server: axum on hyper, pure Rust like everything else here. Optional,
+# pulled in by the `server` feature, which raises the MSRV to axum's (1.80).
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"], optional = true }
 
 [features]
 # The model itself is the point of this crate, so it is what you get by default.
@@ -49,10 +52,14 @@ candle = ["local", "dep:candle-core", "dep:candle-nn", "dep:tokenizers", "dep:zi
 # cannot be part of `candle`. With it, `device("metal")` resolves; without it, it
 # says so rather than quietly running on the CPU.
 metal = ["candle", "candle-core/metal", "candle-nn/metal"]
+# System One over HTTP: `rkev::server`, which serves any `SystemOne` backend on
+# `POST /v1/systemone`. Needs no model, so a recording or a stub can be served
+# too.
+server = ["dep:axum", "dep:tokio", "tokio/net"]
 
 [dev-dependencies]
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
 
 [[example]]
 name = "parity"
