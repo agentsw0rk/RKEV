@@ -57,6 +57,28 @@ impl SystemOne for Rejects {
     }
 }
 
+/// A backend that fails every request with the error `make` builds; a function
+/// rather than an `Error` because `Error` is not `Clone`.
+#[derive(Clone)]
+struct Fails(fn() -> Error);
+
+#[allow(clippy::manual_async_fn)]
+impl SystemOne for Fails {
+    fn system_one(
+        &self,
+        _request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        async move { Err((self.0)()) }
+    }
+
+    fn system_one_separate(
+        &self,
+        request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        self.system_one(request)
+    }
+}
+
 fn shipping() -> SystemOneResponse {
     let mut answers = IndexMap::new();
     answers.insert(
@@ -324,4 +346,23 @@ async fn kev_latest_the_served_name_and_no_model_at_all_are_answered() {
 
         assert_eq!(reply.status, 200, "model {model}: {}", reply.body);
     }
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn a_state_too_long_for_the_model_is_a_413() {
+    let address = start(Server::new(Fails(|| {
+        Error::ContextOverflow("4113 tokens, the model takes 4096".to_string())
+    })))
+    .await;
+
+    let reply = post(address, "/v1/systemone", &[], &choice_request().to_string()).await;
+
+    assert_eq!(reply.status, 413, "body: {}", reply.body);
+    let error = &reply.json()["error"];
+    assert_eq!(error["type"], "state_too_long");
+    assert!(
+        error["message"].as_str().unwrap().contains("4113 tokens"),
+        "error: {error}"
+    );
 }

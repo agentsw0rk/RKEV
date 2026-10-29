@@ -153,6 +153,10 @@ impl From<Error> for Failure {
             // 400 rather than kev.serve's 422: the API document says 400, and
             // the exported client stops on either.
             Error::Invalid(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            // A request that is well formed but too long for this model: 413,
+            // so a client can tell "shorten the state" from "fix the request".
+            #[cfg(feature = "local")]
+            Error::ContextOverflow(_) => (StatusCode::PAYLOAD_TOO_LARGE, "state_too_long"),
             #[allow(unreachable_patterns)]
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         };
