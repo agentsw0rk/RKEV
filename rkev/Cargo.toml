@@ -84,3 +84,7 @@ required-features = ["candle"]
 [[example]]
 name = "eval"
 required-features = ["candle"]
+
+[[example]]
+name = "serve"
+required-features = ["candle", "server"]
