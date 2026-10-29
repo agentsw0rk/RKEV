@@ -208,3 +208,14 @@ async fn a_body_that_is_not_json_is_a_400_in_the_same_error_shape() {
         "error: {error}"
     );
 }
+
+#[tokio::test]
+async fn with_a_key_set_a_request_without_it_is_a_401() {
+    let server = Server::new(Canned(shipping())).api_key(Some("s3cret".to_string()));
+    let address = start(server).await;
+
+    let reply = post(address, "/v1/systemone", &[], &choice_request().to_string()).await;
+
+    assert_eq!(reply.status, 401, "body: {}", reply.body);
+    assert_eq!(reply.json()["error"]["type"], "unauthorized");
+}

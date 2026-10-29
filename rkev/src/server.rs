@@ -10,10 +10,12 @@
 //! exported client passes status and body on in its error message.
 
 use std::io;
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
@@ -25,6 +27,7 @@ use crate::{Error, SystemOne, SystemOneRequest, SystemOneResponse};
 /// A System One server in front of one backend.
 pub struct Server<B> {
     backend: B,
+    api_key: Option<String>,
 }
 
 impl<B> Server<B>
@@ -34,14 +37,29 @@ where
     /// Serve `backend`. `Clone` because every request gets its own handle;
     /// [`LocalEngine`](crate::LocalEngine) is cheap to clone for that reason.
     pub fn new(backend: B) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            api_key: None,
+        }
+    }
+
+    /// Require `Authorization: Bearer <key>` on every request; `None`, the
+    /// default, accepts requests without the header. The exported client sends
+    /// it exactly when its `RKEV_API_KEY` is set, so both of its cases fit.
+    pub fn api_key(mut self, key: Option<String>) -> Self {
+        self.api_key = key;
+        self
     }
 
     /// The routes, for a caller that wants to mount them in its own axum app.
     pub fn router(self) -> Router {
+        let shared = Shared {
+            backend: self.backend,
+            authorization: self.api_key.map(|key| Arc::from(format!("Bearer {key}"))),
+        };
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
-            .with_state(self.backend)
+            .with_state(shared)
     }
 
     /// Answer requests on `listener` until the process ends.
@@ -50,13 +68,42 @@ where
     }
 }
 
+/// What every request handler gets: its handle on the backend, and the
+/// `Authorization` value it must see, if any.
+#[derive(Clone)]
+struct Shared<B> {
+    backend: B,
+    authorization: Option<Arc<str>>,
+}
+
+impl<B> Shared<B> {
+    fn authorize(&self, headers: &HeaderMap) -> Result<(), Failure> {
+        let Some(expected) = &self.authorization else {
+            return Ok(());
+        };
+        let sent = headers.get(AUTHORIZATION).map(|value| value.as_bytes());
+        if sent == Some(expected.as_bytes()) {
+            Ok(())
+        } else {
+            Err(Failure {
+                status: StatusCode::UNAUTHORIZED,
+                kind: "unauthorized",
+                message: "this server needs Authorization: Bearer <key>".to_string(),
+            })
+        }
+    }
+}
+
 async fn system_one<B>(
-    State(backend): State<B>,
+    State(shared): State<Shared<B>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<SystemOneResponse>, Failure>
 where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
+    shared.authorize(&headers)?;
+    let backend = shared.backend;
     // Parsed here rather than by axum's `Json`, whose rejections are plain text:
     // a client should read every failure in the same shape.
     let request: SystemOneRequest = serde_json::from_slice(&body).map_err(|e| Failure {
