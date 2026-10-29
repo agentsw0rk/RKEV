@@ -2,7 +2,7 @@
 //! Agent Modeler's exported agents, for one) can be pointed at rkev instead.
 //!
 //! Generic over the [`SystemOne`] seam rather than tied to
-//! [`LocalEngine`](crate::LocalEngine): the server needs no model, which is what
+//! `LocalEngine`: the server needs no model, which is what
 //! lets `tests/server.rs` drive it over a backend with none in it.
 //!
 //! A failure is never an answer. Every status but 200 ends the caller's agent
@@ -38,7 +38,7 @@ where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
     /// Serve `backend`. `Clone` because every request gets its own handle;
-    /// [`LocalEngine`](crate::LocalEngine) is cheap to clone for that reason.
+    /// `LocalEngine` is cheap to clone for that reason.
     pub fn new(backend: B) -> Self {
         Self {
             backend,
