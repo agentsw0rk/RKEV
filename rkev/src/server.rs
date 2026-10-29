@@ -85,6 +85,7 @@ where
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
             .route("/health", get(health))
+            .route("/v1/models", get(models::<B>))
             .with_state(shared)
     }
 
@@ -203,4 +204,11 @@ impl IntoResponse for Failure {
 /// that is already loaded, so answering at all means ready.
 async fn health() -> Json<serde_json::Value> {
     Json(json!({ "status": "ok" }))
+}
+
+/// The names a request's `model` may ask for, in the order they were added.
+/// The document this follows does not pin the shape `jev-java` reads here, so
+/// this is the smallest one that carries the list.
+async fn models<B>(State(shared): State<Shared<B>>) -> Json<serde_json::Value> {
+    Json(json!({ "models": &*shared.models }))
 }

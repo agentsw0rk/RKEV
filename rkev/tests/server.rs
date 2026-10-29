@@ -443,3 +443,13 @@ async fn health_answers_200_once_the_server_is_up() {
     assert_eq!(reply.status, 200, "body: {}", reply.body);
     assert_eq!(reply.json()["status"], "ok");
 }
+
+#[tokio::test]
+async fn models_lists_the_names_the_server_answers_to() {
+    let address = start(Server::new(Canned(shipping())).model_name("kev-0.6b")).await;
+
+    let reply = get(address, "/v1/models").await;
+
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(reply.json()["models"], json!(["kev-latest", "kev-0.6b"]));
+}
