@@ -656,3 +656,20 @@ fn a_score_without_levels_is_refused_before_the_forward_pass() {
     assert!(error.is_validation(), "got {error:?}");
     assert_eq!(calls.load(Ordering::SeqCst), 0, "the backend was not asked");
 }
+
+#[test]
+fn more_than_255_options_is_refused_and_255_is_not() {
+    // 1 to 255, as the request types document it and kev's API enforces.
+    let (stub, _, _) = Stub::new(vec![vec![1.0 / 255.0; 255]]);
+    let engine = LocalEngine::new(stub, identity_head());
+    let ask = |n: usize| {
+        let options = Choice::new("Pick one").options((0..n).map(|i| (format!("o{i}"), "x")));
+        SystemOneRequest::new("a ticket").ask("q", options)
+    };
+
+    let error = engine.system_one_blocking(&ask(256)).unwrap_err();
+
+    assert!(error.is_validation(), "got {error:?}");
+    assert!(error.to_string().contains("256"), "says how many: {error}");
+    assert!(engine.system_one_blocking(&ask(255)).is_ok());
+}

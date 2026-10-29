@@ -713,12 +713,12 @@ fn validate(request: &SystemOneRequest) -> Result<()> {
     for (id, question) in &request.questions {
         let (count, what) = match question {
             crate::Question::Noul(_) => continue,
-            crate::Question::Choice(choice) => (choice.criteria.len(), "a choice with no options"),
-            crate::Question::Score(score) => (score.criteria.len(), "a score with no levels"),
+            crate::Question::Choice(choice) => (choice.criteria.len(), "options"),
+            crate::Question::Score(score) => (score.criteria.len(), "levels"),
         };
-        if count == 0 {
+        if !(1..=255).contains(&count) {
             return Err(Error::Invalid(format!(
-                "question {id:?} is {what}; it needs 1 to 255"
+                "question {id:?} has {count} {what}; it needs 1 to 255"
             )));
         }
     }
