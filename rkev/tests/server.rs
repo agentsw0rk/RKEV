@@ -124,15 +124,22 @@ impl Reply {
     }
 }
 
-/// One HTTP/1.1 request, written by hand, with `Connection: close` so the reply
-/// ends where the stream does.
+/// One HTTP/1.1 request, written by hand. `Connection: close` unless the caller
+/// sends its own `Connection` header; either way the reply is read by its
+/// `Content-Length`, so a connection the server keeps open cannot hang the test.
 async fn post(address: SocketAddr, path: &str, extra_headers: &[&str], body: &str) -> Reply {
     let mut stream = TcpStream::connect(address).await.unwrap();
     let mut request = format!(
         "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
-         Content-Length: {}\r\nConnection: close\r\n",
+         Content-Length: {}\r\n",
         body.len()
     );
+    if !extra_headers
+        .iter()
+        .any(|header| header.to_ascii_lowercase().starts_with("connection:"))
+    {
+        request.push_str("Connection: close\r\n");
+    }
     for header in extra_headers {
         request.push_str(header);
         request.push_str("\r\n");
@@ -141,9 +148,17 @@ async fn post(address: SocketAddr, path: &str, extra_headers: &[&str], body: &st
     request.push_str(body);
     stream.write_all(request.as_bytes()).await.unwrap();
 
-    let mut raw = String::new();
-    stream.read_to_string(&mut raw).await.unwrap();
-    let (head, body) = raw.split_once("\r\n\r\n").expect("a header block");
+    let mut raw = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let head_end = loop {
+        if let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+            break end;
+        }
+        let read = stream.read(&mut chunk).await.unwrap();
+        assert!(read > 0, "connection closed before the headers ended");
+        raw.extend_from_slice(&chunk[..read]);
+    };
+    let head = String::from_utf8(raw[..head_end].to_vec()).unwrap();
     let mut lines = head.lines();
     let status = lines
         .next()
@@ -153,14 +168,25 @@ async fn post(address: SocketAddr, path: &str, extra_headers: &[&str], body: &st
         .unwrap()
         .parse()
         .unwrap();
-    let headers = lines
+    let headers: Vec<(String, String)> = lines
         .filter_map(|line| line.split_once(':'))
         .map(|(key, value)| (key.trim().to_ascii_lowercase(), value.trim().to_string()))
         .collect();
+    let length: usize = headers
+        .iter()
+        .find(|(key, _)| key == "content-length")
+        .map(|(_, value)| value.parse().unwrap())
+        .expect("a Content-Length");
+    let mut body = raw[head_end + 4..].to_vec();
+    while body.len() < length {
+        let read = stream.read(&mut chunk).await.unwrap();
+        assert!(read > 0, "connection closed before the body ended");
+        body.extend_from_slice(&chunk[..read]);
+    }
     Reply {
         status,
         headers,
-        body: body.to_string(),
+        body: String::from_utf8(body).unwrap(),
     }
 }
 
