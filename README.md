@@ -3,12 +3,12 @@
 ### RKev 1.0p Kevs Entscheidungsmodelle in Rust
 -> Prompt, Forward-Pass und Readout laufen in Rust im eigenen Prozess <-
 
-RKev führt Kevs Entscheidungsmodelle direkt in Rust im eigenen Prozess aus: ohne zusätzlichen Server, ohne API-Gateway und ohne laufende API-Kosten. Alles läuft vollständig lokal.
+RKev führt Kevs Entscheidungsmodelle direkt in Rust aus: ohne Python-Server, ohne API-Gateway und ohne laufende API-Kosten. Alles läuft vollständig lokal — als Bibliothek im eigenen Prozess oder als eigener HTTP-Server, der TypeSafes System-One-API spricht.
 
 Das Prinzip ist einfach: Text (oder JSON) + Fragestellung rein → Wahrscheinlichkeiten raus. Unterstützt werden Ja/Nein-Entscheidungen, die Auswahl aus mehreren Optionen sowie Bewertungen auf einer Skala.
 Dabei werden keine Antwort-Tokens generiert. Die Entscheidung erfolgt über einen Pointer-Head auf den Hidden States der Qwen-Basis, in die der LoRA-Adapter des Checkpoints eingerechnet ist.
 
-RKev unterstützt Qwen3 ebenso wie das hybride Qwen3.5 mit Gated DeltaNet. Dazu kommen ein CLI für direkte Anfragen und ein Eval-Runner, mit dem sich eigene gelabelte Tickets auswerten lassen — mit Trefferquote pro Sicherheitsband, aus dem eine Schwelle fürs automatische Routing folgt.
+RKev unterstützt Qwen3 ebenso wie das hybride Qwen3.5 mit Gated DeltaNet. Dazu kommen ein CLI für direkte Anfragen, ein HTTP-Server, gegen den aus dem Agent Modeler exportierte Agents ohne Code-Änderung laufen, und ein Eval-Runner, mit dem sich eigene gelabelte Tickets auswerten lassen — mit Trefferquote pro Sicherheitsband, aus dem eine Schwelle fürs automatische Routing folgt.
 
 ## Was RKev macht
 
@@ -73,6 +73,13 @@ Zeile von stdin und `--json` für genau die Antwort, die der Server geschickt h�
 Ob die Checkpoints auf **deutschen** Tickets genauso zuverlässig sind, messt
 `examples/deutsch` — siehe [docs/eval.md](docs/eval.md#auf-deutsch).
 
+Oder du startest denselben Checkpoint als HTTP-Server und prüfst ihn gleich:
+
+```bash
+scripts/start-http.sh                 # lädt ~/models/kev-0.6b, dann http://127.0.0.1:8090
+scripts/test-http.sh                  # in einem zweiten Terminal: die Akzeptanztests
+```
+
 ## Als Bibliothek
 
 ```toml
@@ -111,34 +118,27 @@ den Pass vom Runtime-Thread weg, weil ein Forward-Pass CPU-gebunden ist.
 
 Mit dem Feature `server` beantwortet RKev dasselbe Wire-Format über HTTP auf
 `POST /v1/systemone`. Aus dem Agent Modeler exportierte Agents laufen dann ohne
-Code-Änderung gegen RKev: `RKEV_BASE_URL` auf den Server zeigen lassen, fertig.
+Code-Änderung gegen RKev statt gegen TypeSafe: `RKEV_BASE_URL` auf den Server
+zeigen lassen, fertig.
 
 ```bash
-scripts/start-http.sh                        # ~/models/kev-0.6b auf 127.0.0.1:8090
-scripts/start-http.sh --host 0.0.0.0         # von außen erreichbar, z.B. im Container
+scripts/start-http.sh --host 0.0.0.0 --api-key <key>   # erreichbar, mit Key
+# beim exportierten Agent: RKEV_BASE_URL=http://<host>:8090, RKEV_API_KEY=<key>
 ```
 
-Das Skript findet das Basismodell über die `adapter_config.json` des Checkpoints
-(wie `scripts/local.sh --fetch` es ablegt), baut `serve` im Release-Modus und
-startet es. `scripts/test-http.sh` prüft einen laufenden Server mit `curl` gegen
-die Akzeptanztests: Statuscodes, Antworttypen, Optionsnamen und -reihenfolge,
-`Upgrade: h2c`, die Fehler, und ob der Server danach noch antwortet. Ob die
-Antworten inhaltlich stimmen, braucht einen trainierten Checkpoint; das sind
-deshalb nur Warnungen, außer mit `--strict`. Direkt geht es auch:
+| Route | |
+|---|---|
+| `POST /v1/systemone` | die Antworten |
+| `POST /v1/systemone/separate` | jede Frage in ihrem eigenen Pass |
+| `GET /v1/models` | die Namen, die eine Anfrage als `model` nennen darf |
+| `GET /health` | für Container-Probes, ohne Key |
 
-```bash
-cargo run --release --features candle,server --example serve -- \
-    --base models/qwen3-0.6b-base --checkpoint models/kev-0.6b \
-    --listen 0.0.0.0:8090        # Standard: 127.0.0.1:8090
-```
-
-`--api-key` (oder `RKEV_API_KEY`) verlangt `Authorization: Bearer <key>`;
-`--max-concurrent` (Standard 4) lehnt darüber hinaus sofort mit 503 ab, statt
-Anfragen über das 60-s-Timeout des Clients hinaus warten zu lassen. Daneben gibt es
-`/v1/systemone/separate`, `GET /v1/models` und `GET /health`. Jeder Fehler ist ein
-Status mit `{"error": {"type", "message"}}`: 400 für eine kaputte Anfrage (auch 0
-oder mehr als 255 Optionen), 401, 404 für ein unbekanntes `model`, 413, 500, 503.
-Die Tabelle und was davon Annahme ist: [rkev/README.md](rkev/README.md#serving-it-over-http-feature-server).
+Jeder Fehler ist ein Status mit `{"error": {"type", "message"}}` und nie eine
+Antwort: 400 für eine ungültige Anfrage, 401 ohne passenden Key, 404 für ein
+unbekanntes `model`, 413, 500, und 503 sofort, wenn alle Plätze belegt sind —
+statt Anfragen über das 60-s-Timeout des Clients hinaus warten zu lassen.
+`rkev::server` lässt sich auch in ein eigenes Programm einbauen. Optionen,
+Fehlertabelle, Einbau und was davon Annahme ist: [docs/server.md](docs/server.md).
 
 ## Features
 
@@ -211,13 +211,13 @@ Dazu drei Grenzen: auf einer CPU gibt es in candle kein bf16-Matmul (f16 ist die
 reduzierte Präzision dort), ein echter **hybrider** Checkpoint wurde noch nicht
 geladen, und gelaufen sind bisher CPU und Metal — sonst kein Gerät.
 
-Der HTTP-Server ist offline getestet und lief von Hand gegen einen Spielzeug-Checkpoint
-(jede Route, Auth, `Upgrade: h2c`, die Fehlercodes). Gegen einen echten Checkpoint
-und einen aus dem Modeler exportierten Agent lief er noch nicht.
+Der HTTP-Server ist offline getestet und lief mit `scripts/test-http.sh` gegen einen
+Spielzeug-Checkpoint: jede Route, Auth, `Upgrade: h2c`, die Fehlercodes. Gegen einen
+echten Checkpoint und einen aus dem Modeler exportierten Agent lief er noch nicht.
 
 Mehr dazu in [docs/pruefungen.md](docs/pruefungen.md).
-## Mehr im Detail
 
+## Mehr im Detail
 
 | | |
 |---|---|
@@ -225,3 +225,4 @@ Mehr dazu in [docs/pruefungen.md](docs/pruefungen.md).
 | [docs/leistung.md](docs/leistung.md) | Gemessene Zahlen: Metal gegen CPU, f16, State-Prefix, Quantisierung, und wie man selbst messt |
 | [docs/eval.md](docs/eval.md) | Trefferquote und Kalibrierung auf eigenen beschrifteten Tickets, mit Schwelle für CI |
 | [docs/pruefungen.md](docs/pruefungen.md) | Woran der Port festgemacht ist, und wie ein falsch geladener Checkpoint laut wird |
+| [docs/server.md](docs/server.md) | Der HTTP-Server: starten, den exportierten Agent anschließen, Routen, Fehler, prüfen, einbauen, und was Annahme ist |
