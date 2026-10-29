@@ -71,7 +71,7 @@ step() {
 # cfg-gated Metal code at all.
 all_features="--all-features"
 if [ "$(uname -s)" != "Darwin" ]; then
-    all_features="--features candle"
+    all_features="--features candle,server"
 fi
 
 # clippy runs with the full feature set: a lint inside a cfg-gated module would
@@ -109,6 +109,7 @@ step "cargo test" cargo test ${cargo_test_args[@]+"${cargo_test_args[@]}"}
 # named, where the matrix is noise.
 if [ "$skip_features" -eq 0 ] && [ ${#cargo_test_args[@]} -eq 0 ]; then
     for combo in "--no-default-features" \
+                 "--no-default-features --features server" \
                  "--no-default-features --features local" \
                  "$all_features"; do
         # shellcheck disable=SC2086

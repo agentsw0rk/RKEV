@@ -198,6 +198,42 @@ fn optional_response_fields_may_be_missing() {
 }
 
 #[test]
+fn a_response_serialises_back_into_the_readme_shape() {
+    // What a server built on rkev sends: the same fields and order kev.serve does,
+    // so a client that parsed kev.serve parses this unchanged.
+    let response: SystemOneResponse = serde_json::from_str(README_RESPONSE).unwrap();
+
+    let mut sent = serde_json::to_value(&response).unwrap();
+
+    let mut expected: serde_json::Value = serde_json::from_str(README_RESPONSE).unwrap();
+    // `latency_ms` is an f64, so 495 goes out as 495.0: the same JSON number,
+    // but not an equal `Value`.
+    assert_eq!(
+        sent["latency_ms"].take().as_f64(),
+        expected["latency_ms"].take().as_f64()
+    );
+    assert_eq!(sent, expected);
+    assert_eq!(
+        serde_json::to_string(&sent["answers"]["frustration"]).unwrap(),
+        serde_json::to_string(&expected["answers"]["frustration"]).unwrap(),
+        "field order is part of the shape"
+    );
+}
+
+#[test]
+fn a_response_without_latency_omits_the_field() {
+    // Optional on the way in, so absent on the way out rather than `null`.
+    let response: SystemOneResponse = serde_json::from_str(
+        r#"{"model":"kev-latest","answers":{"a":{"type":"noul","noul":0.5}}}"#,
+    )
+    .unwrap();
+
+    let sent = serde_json::to_value(&response).unwrap();
+
+    assert!(sent.get("latency_ms").is_none(), "sent: {sent}");
+}
+
+#[test]
 fn a_request_survives_a_round_trip_through_json() {
     // The request types deserialise as well as serialise, so a recorded request
     // can be replayed - which is what examples/parity.rs does with the body the

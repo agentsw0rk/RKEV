@@ -208,14 +208,14 @@ impl From<Score> for Question {
 // ---------------------------------------------------------------------------
 
 /// The answer set for one System One call.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemOneResponse {
     pub model: String,
     /// Same ids as the request, in the server's order.
     pub answers: IndexMap<String, Answer>,
     #[serde(default)]
     pub usage: Usage,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<f64>,
 }
 
@@ -228,7 +228,7 @@ impl SystemOneResponse {
 
 /// Token accounting. `output_tokens` counts the serialised answers, not
 /// generated tokens — Kev generates none.
-#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u64,
@@ -237,7 +237,7 @@ pub struct Usage {
 }
 
 /// One answer, shaped by the question type it belongs to.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Answer {
     Noul {

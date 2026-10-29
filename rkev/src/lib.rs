@@ -57,6 +57,9 @@
 //!
 //! [`LocalEngine::system_one`] is the same call for an async caller: it moves the
 //! pass off the runtime thread, since a forward pass is CPU-bound.
+//!
+//! With the `server` feature, `server::Server` answers the same requests over
+//! HTTP on `POST /v1/systemone`, in front of any [`SystemOne`] backend.
 
 #[cfg(feature = "candle")]
 mod backend;
@@ -75,6 +78,9 @@ pub mod qwen3;
 pub mod qwen3_5;
 #[cfg(feature = "local")]
 mod readout;
+/// System One over HTTP: any [`SystemOne`] backend on `POST /v1/systemone`.
+#[cfg(feature = "server")]
+pub mod server;
 mod system_one;
 mod types;
 #[cfg(feature = "candle")]

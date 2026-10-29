@@ -107,6 +107,39 @@ Ein asynchroner Aufrufer nimmt `engine.system_one(&request).await` — das schie
 den Pass vom Runtime-Thread weg, weil ein Forward-Pass CPU-gebunden ist.
 `LocalEngine` ist billig zu klonen, und Klone teilen das eine geladene Modell.
 
+## Als Server
+
+Mit dem Feature `server` beantwortet RKev dasselbe Wire-Format über HTTP auf
+`POST /v1/systemone`. Aus dem Agent Modeler exportierte Agents laufen dann ohne
+Code-Änderung gegen RKev: `RKEV_BASE_URL` auf den Server zeigen lassen, fertig.
+
+```bash
+scripts/start-http.sh                        # ~/models/kev-0.6b auf 127.0.0.1:8090
+scripts/start-http.sh --host 0.0.0.0         # von außen erreichbar, z.B. im Container
+```
+
+Das Skript findet das Basismodell über die `adapter_config.json` des Checkpoints
+(wie `scripts/local.sh --fetch` es ablegt), baut `serve` im Release-Modus und
+startet es. `scripts/test-http.sh` prüft einen laufenden Server mit `curl` gegen
+die Akzeptanztests: Statuscodes, Antworttypen, Optionsnamen und -reihenfolge,
+`Upgrade: h2c`, die Fehler, und ob der Server danach noch antwortet. Ob die
+Antworten inhaltlich stimmen, braucht einen trainierten Checkpoint; das sind
+deshalb nur Warnungen, außer mit `--strict`. Direkt geht es auch:
+
+```bash
+cargo run --release --features candle,server --example serve -- \
+    --base models/qwen3-0.6b-base --checkpoint models/kev-0.6b \
+    --listen 0.0.0.0:8090        # Standard: 127.0.0.1:8090
+```
+
+`--api-key` (oder `RKEV_API_KEY`) verlangt `Authorization: Bearer <key>`;
+`--max-concurrent` (Standard 4) lehnt darüber hinaus sofort mit 503 ab, statt
+Anfragen über das 60-s-Timeout des Clients hinaus warten zu lassen. Daneben gibt es
+`/v1/systemone/separate`, `GET /v1/models` und `GET /health`. Jeder Fehler ist ein
+Status mit `{"error": {"type", "message"}}`: 400 für eine kaputte Anfrage (auch 0
+oder mehr als 255 Optionen), 401, 404 für ein unbekanntes `model`, 413, 500, 503.
+Die Tabelle und was davon Annahme ist: [rkev/README.md](rkev/README.md#serving-it-over-http-feature-server).
+
 ## Features
 
 | Feature | Was es bringt | Kosten |
@@ -115,10 +148,12 @@ den Pass vom Runtime-Thread weg, weil ein Forward-Pass CPU-gebunden ist.
 | `local` | Prompt, Token-Layout, Pointer-Head, `LocalEngine`; `Forward` bleibt dir | tokio (nur `spawn_blocking`) |
 | — | die Wire-Format-Typen, die Fehler, die `SystemOne`-Naht | nichts |
 | `metal` | candles Metal-Backend für eine Apple-GPU; nur auf macOS baubar | Apple-Frameworks |
+| `server` | System One über HTTP: `rkev::server` vor jedem `SystemOne`-Backend | axum 0.8, hyper |
 
 Ohne jedes Feature (`--no-default-features`) bleibt also genau das, was ein
 Aufrufer braucht, um mit etwas anderem zu reden — oder um eine Aufzeichnung zu
-halten. MSRV ist 1.75 ohne `candle`, mit `candle` dessen eigener Wert.
+halten. MSRV ist 1.75 ohne `candle`, mit `candle` dessen eigener Wert, mit
+`server` 1.80 (axum).
 
 `metal` ist bewusst nicht Teil von `candle` und nur auf macOS baubar; wo es fehlt,
 verweigert `device("metal")` den Dienst statt still auf die CPU zurückzufallen.
@@ -136,6 +171,7 @@ Alle in `rkev/examples/`:
 | `parity` | vergleicht jede Wahrscheinlichkeit mit einer aufgezeichneten Server-Antwort | Aufzeichnung |
 | `deutsch` | ein deutsches Ticket mit allen drei Fragetypen, und mit `--vergleich` dieselben Inhalte auf englisch daneben | Checkpoint |
 | `eval` | Trefferquote und Kalibrierung auf deinen eigenen beschrifteten Tickets | Checkpoint + Records |
+| `serve` | System One über HTTP vor einem Checkpoint (`--features candle,server`) | Checkpoint |
 
 ## Skripte
 
@@ -149,6 +185,10 @@ scripts/local.sh --checkpoint <dir> \
 scripts/sweep.sh --base <dir> --checkpoint <dir>     # CPU und Metal durchmessen
 scripts/parity.sh --base <dir> --checkpoint <dir>    # gegen einen Server aufzeichnen
 scripts/parity.sh --check-only --base <dir> --checkpoint <dir>   # und offline nachprüfen
+scripts/start-http.sh                           # HTTP-Server vor ~/models/kev-0.6b auf :8090
+scripts/start-http.sh --host 0.0.0.0 --api-key <key>   # von außen erreichbar, mit Key
+scripts/test-http.sh                            # prüft einen laufenden Server
+scripts/test-http.sh --url http://rkev:8090 --api-key <key> --strict
 ```
 
 `scripts/local.sh --help` listet den Rest. `KEV_HF` zeigt die Downloads auf einen
@@ -158,7 +198,7 @@ Spiegel (oder auf einen `file://`-Baum).
 
 Geprüft: beide Backbones (attention-only Qwen3 und das hybride Qwen3.5 mit Gated
 DeltaNet), beide Forward-Pässe gegen Transkriptionen der Hugging-Face-Modelle,
-92 Tests. Ein echter Checkpoint lädt und antwortet sinnvoll — `jaredpalmer/kev-0.6b`
+116 Tests. Ein echter Checkpoint lädt und antwortet sinnvoll — `jaredpalmer/kev-0.6b`
 trifft alle sieben eindeutigen Fälle von `sanity`, und mit vertauschten
 Pointer-Head-Projektionen keinen einzigen.
 
@@ -170,6 +210,10 @@ einmal — danach sind die Aufzeichnungen Dateien.
 Dazu drei Grenzen: auf einer CPU gibt es in candle kein bf16-Matmul (f16 ist die
 reduzierte Präzision dort), ein echter **hybrider** Checkpoint wurde noch nicht
 geladen, und gelaufen sind bisher CPU und Metal — sonst kein Gerät.
+
+Der HTTP-Server ist offline getestet und lief von Hand gegen einen Spielzeug-Checkpoint
+(jede Route, Auth, `Upgrade: h2c`, die Fehlercodes). Gegen einen echten Checkpoint
+und einen aus dem Modeler exportierten Agent lief er noch nicht.
 
 Mehr dazu in [docs/pruefungen.md](docs/pruefungen.md).
 ## Mehr im Detail
