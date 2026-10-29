@@ -103,6 +103,7 @@ questions keep the order you add them in.
 | `parity` | every probability against a recorded server response | a recording |
 | `deutsch` | the same thing in German, and with `--vergleich` the same content in English beside it — the checkpoints are published on English data and the base is multilingual, so what that costs is worth measuring rather than assuming | a checkpoint |
 | `eval` | accuracy and calibration on your own labelled records | a checkpoint and a JSONL set |
+| `serve` | System One over HTTP, in front of a checkpoint (`--features candle,server`) | a checkpoint |
 
 ## What it answers
 
@@ -120,6 +121,56 @@ and every run repeats the same state, so only the first pays for it.
 
 Several requests at once are `system_one_batch_blocking`, which has no endpoint
 behind it: it is what a server would call for a batch it collected itself.
+
+## Serving it over HTTP (feature `server`)
+
+`rkev::server` answers the same wire format on `POST /v1/systemone`, so a client
+written against TypeSafe's API — an agent exported from the Agent Modeler, with
+`RKEV_BASE_URL` pointed here — talks to rkev without a code change.
+
+```bash
+cargo run --release --features candle,server --example serve -- \
+    --base models/qwen3-0.6b-base --checkpoint models/kev-0.6b \
+    --listen 0.0.0.0:8090            # default 127.0.0.1:8090
+```
+
+Or in your own program, in front of anything that implements `SystemOne`:
+
+```rust
+use rkev::server::Server;
+
+let server = Server::new(engine)                 // LocalEngine, or any SystemOne
+    .model_name("kev-0.6b")                      // besides kev-latest
+    .api_key(std::env::var("RKEV_API_KEY").ok()) // None: no header needed
+    .max_concurrent(4);                          // the rest get 503 at once
+server.serve(tokio::net::TcpListener::bind("0.0.0.0:8090").await?).await?;
+// or server.router(), to mount the routes in an axum app of your own
+```
+
+| Route | |
+|---|---|
+| `POST /v1/systemone` | the answers |
+| `POST /v1/systemone/separate` | one pass per question |
+| `GET /v1/models` | the names a request's `model` may use: `{"models": [...]}` |
+| `GET /health` | `{"status": "ok"}`; open even when a key is set |
+
+Every failure is a status and `{"error": {"type", "message"}}`, never an answer:
+
+| Status | `type` | When |
+|---|---|---|
+| 400 | `invalid_request` | not JSON, not a System One request, or 0 or more than 255 options or levels |
+| 401 | `unauthorized` | a key is set and `Authorization: Bearer <key>` is missing or wrong |
+| 404 | `model_not_found` | `model` names something other than `kev-latest` or the served name |
+| 413 | `state_too_long` | the request does not fit the model's context |
+| 500 | `internal` | the engine failed |
+| 503 | `unavailable` | every slot is busy; refused at once rather than queued past a client's timeout |
+
+400 is not `kev.serve`'s 422 on purpose: it is what the API document for the
+exported client asks for, and that client stops on any status but 200. Whether
+TypeSafe's own server uses these codes, and the shape `jev-java` reads from
+`/v1/models`, is not documented anywhere this was checked against — both are
+assumptions. Plain HTTP/1.1 only; Java's `Upgrade: h2c` offer is ignored, which
+is what that client needs. The feature raises the MSRV to axum's, 1.80.
 
 ## Inside the engine (features `local`, `candle`)
 
