@@ -345,3 +345,17 @@ async fn a_state_too_long_for_the_model_is_a_413() {
         "error: {error}"
     );
 }
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn an_engine_failure_is_a_500_not_an_answer() {
+    let address = start(Server::new(Fails(|| {
+        Error::Engine("the forward pass failed".to_string())
+    })))
+    .await;
+
+    let reply = post(address, "/v1/systemone", &[], &choice_request().to_string()).await;
+
+    assert_eq!(reply.status, 500, "body: {}", reply.body);
+    assert_eq!(reply.json()["error"]["type"], "internal");
+}
