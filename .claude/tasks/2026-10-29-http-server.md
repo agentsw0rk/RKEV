@@ -14,7 +14,10 @@ Frage pro Request, ID immer `decision`, `state` als String, Timeout 60 s.
 - ✅ End-to-end von Hand: `serve` gegen den Spielzeug-Checkpoint aus den
   qwen3-Tests (`/tmp/kev-qwen3-answers`), mit curl jede Route, Auth, h2c, alle
   Fehlercodes.
-- ⏸ **Push und Draft-PR offen:** `gh` ist seit dem Container-Neustart nicht
+- ✅ Auf Wunsch des Nutzers lokal in `main` gemergt (Merge-Commit `bc38746`,
+  kein PR), Checks auf `main` grün, Branch gelöscht. Dazu
+  `scripts/start-http.sh` und `scripts/test-http.sh`.
+- ⏸ **`git push origin main` offen:** `gh` ist seit dem Container-Neustart nicht
   angemeldet (`gh auth login` durch den Nutzer).
 - ⏸ Gegen einen echten Checkpoint und einen exportierten Graph-Agent noch nicht
   gelaufen (letzter Punkt der Akzeptanztests im Dokument).
