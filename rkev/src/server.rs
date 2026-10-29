@@ -84,6 +84,7 @@ where
         };
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
+            .route("/v1/systemone/separate", post(system_one_separate::<B>))
             .route("/health", get(health))
             .route("/v1/models", get(models::<B>))
             .with_state(shared)
@@ -131,7 +132,34 @@ async fn system_one<B>(
 where
     B: SystemOne + Clone + Send + Sync + 'static,
 {
-    shared.authorize(&headers)?;
+    answer(shared, &headers, &body, false).await
+}
+
+/// Each question in its own forward pass, as `kev.serve` offers it: the check
+/// that questions are isolated in the ordinary call too.
+async fn system_one_separate<B>(
+    State(shared): State<Shared<B>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<SystemOneResponse>, Failure>
+where
+    B: SystemOne + Clone + Send + Sync + 'static,
+{
+    answer(shared, &headers, &body, true).await
+}
+
+/// Everything both routes do: the key, a slot, the body, the model name, and
+/// then the one call they differ in.
+async fn answer<B>(
+    shared: Shared<B>,
+    headers: &HeaderMap,
+    body: &[u8],
+    separate: bool,
+) -> Result<Json<SystemOneResponse>, Failure>
+where
+    B: SystemOne + Clone + Send + Sync + 'static,
+{
+    shared.authorize(headers)?;
     // Held until the answer is built, then dropped with it.
     let _permit = match &shared.permits {
         Some(permits) => Some(permits.clone().try_acquire_owned().map_err(|_| Failure {
@@ -144,7 +172,7 @@ where
     let backend = shared.backend;
     // Parsed here rather than by axum's `Json`, whose rejections are plain text:
     // a client should read every failure in the same shape.
-    let request: SystemOneRequest = serde_json::from_slice(&body).map_err(|e| Failure {
+    let request: SystemOneRequest = serde_json::from_slice(body).map_err(|e| Failure {
         status: StatusCode::BAD_REQUEST,
         kind: "invalid_request",
         message: format!("the body is not a System One request: {e}"),
@@ -161,7 +189,12 @@ where
             });
         }
     }
-    Ok(Json(backend.system_one(&request).await?))
+    let response = if separate {
+        backend.system_one_separate(&request).await?
+    } else {
+        backend.system_one(&request).await?
+    };
+    Ok(Json(response))
 }
 
 /// What a client reads when there is no answer: a status, and in the body the

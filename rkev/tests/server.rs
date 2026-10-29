@@ -98,6 +98,37 @@ impl SystemOne for Held {
     }
 }
 
+/// A backend that says which of the two calls it got, in the response's `model`.
+#[derive(Clone)]
+struct Tells;
+
+#[allow(clippy::manual_async_fn)]
+impl SystemOne for Tells {
+    fn system_one(
+        &self,
+        _request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        async move {
+            Ok(SystemOneResponse {
+                model: "packed".to_string(),
+                ..shipping()
+            })
+        }
+    }
+
+    fn system_one_separate(
+        &self,
+        _request: &SystemOneRequest,
+    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
+        async move {
+            Ok(SystemOneResponse {
+                model: "separate".to_string(),
+                ..shipping()
+            })
+        }
+    }
+}
+
 fn shipping() -> SystemOneResponse {
     let mut answers = IndexMap::new();
     answers.insert(
@@ -461,4 +492,17 @@ async fn with_a_key_set_the_api_needs_it_but_the_health_probe_does_not() {
 
     assert_eq!(get(address, "/v1/models").await.status, 401);
     assert_eq!(get(address, "/health").await.status, 200);
+}
+
+#[tokio::test]
+async fn the_separate_route_asks_each_question_in_its_own_pass() {
+    let address = start(Server::new(Tells)).await;
+    let body = choice_request().to_string();
+
+    let separate = post(address, "/v1/systemone/separate", &[], &body).await;
+    let packed = post(address, "/v1/systemone", &[], &body).await;
+
+    assert_eq!(separate.status, 200, "body: {}", separate.body);
+    assert_eq!(separate.json()["model"], "separate");
+    assert_eq!(packed.json()["model"], "packed");
 }
