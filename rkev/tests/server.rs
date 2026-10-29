@@ -36,28 +36,7 @@ impl SystemOne for Canned {
     }
 }
 
-/// A backend that rejects every request as invalid, with the given reason.
-#[derive(Clone)]
-struct Rejects(&'static str);
-
-#[allow(clippy::manual_async_fn)]
-impl SystemOne for Rejects {
-    fn system_one(
-        &self,
-        _request: &SystemOneRequest,
-    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
-        async move { Err(Error::Invalid(self.0.to_string())) }
-    }
-
-    fn system_one_separate(
-        &self,
-        request: &SystemOneRequest,
-    ) -> impl Future<Output = Result<SystemOneResponse>> + Send {
-        self.system_one(request)
-    }
-}
-
-/// A backend that fails every request with the error `make` builds; a function
+/// A backend that fails every request with the error its function builds; a function
 /// rather than an `Error` because `Error` is not `Clone`.
 #[derive(Clone)]
 struct Fails(fn() -> Error);
@@ -227,8 +206,8 @@ async fn a_choice_request_is_answered_with_the_backends_answer() {
 
 #[tokio::test]
 async fn a_request_the_backend_rejects_is_a_400_that_says_why() {
-    let reason = "questions.decision.criteria must have at least 1 option";
-    let address = start(Server::new(Rejects(reason))).await;
+    const REASON: &str = "questions.decision.criteria must have at least 1 option";
+    let address = start(Server::new(Fails(|| Error::Invalid(REASON.to_string())))).await;
 
     let reply = post(address, "/v1/systemone", &[], &choice_request().to_string()).await;
 
@@ -237,7 +216,7 @@ async fn a_request_the_backend_rejects_is_a_400_that_says_why() {
     let error = &reply.json()["error"];
     assert_eq!(error["type"], "invalid_request");
     assert!(
-        error["message"].as_str().unwrap().contains(reason),
+        error["message"].as_str().unwrap().contains(REASON),
         "error: {error}"
     );
 }
