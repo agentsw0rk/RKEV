@@ -80,6 +80,7 @@ Checkpoint ist noch nichts gemessen.
 | `POST /v1/systemone/separate` | jede Frage in ihrem eigenen Pass |
 | `GET /v1/models` | die Namen, die `model` nennen darf: `{"models": [...]}` |
 | `GET /health` | `{"status": "ok"}`, auch ohne Key erreichbar |
+| `GET /` | eine leere Seite mit 200, auch ohne Key; für Load Balancer und Browser |
 
 `model` darf fehlen (dann antwortet der geladene Checkpoint), `kev-latest` oder
 der Name des geladenen Checkpoints sein. Alles andere ist ein 404.

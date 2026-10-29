@@ -153,6 +153,7 @@ server.serve(tokio::net::TcpListener::bind("0.0.0.0:8090").await?).await?;
 | `POST /v1/systemone/separate` | one pass per question |
 | `GET /v1/models` | the names a request's `model` may use: `{"models": [...]}` |
 | `GET /health` | `{"status": "ok"}`; open even when a key is set |
+| `GET /` | an empty 200, also without a key: for load balancers and browsers |
 
 Every failure is a status and `{"error": {"type", "message"}}`, never an answer:
 
