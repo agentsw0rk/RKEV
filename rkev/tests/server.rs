@@ -506,3 +506,15 @@ async fn the_separate_route_asks_each_question_in_its_own_pass() {
     assert_eq!(separate.json()["model"], "separate");
     assert_eq!(packed.json()["model"], "packed");
 }
+
+#[tokio::test]
+async fn the_root_is_an_empty_200_even_with_a_key_set() {
+    // For whatever probes the bare URL: a load balancer, a browser, a person.
+    let server = Server::new(Canned(shipping())).api_key(Some("s3cret".to_string()));
+    let address = start(server).await;
+
+    let reply = get(address, "/").await;
+
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(reply.body, "");
+}

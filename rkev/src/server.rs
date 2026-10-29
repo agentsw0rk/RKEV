@@ -85,6 +85,7 @@ where
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
             .route("/v1/systemone/separate", post(system_one_separate::<B>))
+            .route("/", get(root))
             .route("/health", get(health))
             .route("/v1/models", get(models::<B>))
             .with_state(shared)
@@ -248,4 +249,10 @@ async fn models<B>(
 ) -> Result<Json<serde_json::Value>, Failure> {
     shared.authorize(&headers)?;
     Ok(Json(json!({ "models": &*shared.models })))
+}
+
+/// An empty 200 on the bare URL, for whatever probes it: a load balancer, a
+/// browser, a person checking that the port is the right one. No key needed.
+async fn root() -> StatusCode {
+    StatusCode::OK
 }

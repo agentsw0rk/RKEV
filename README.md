@@ -132,6 +132,7 @@ scripts/start-http.sh --host 0.0.0.0 --api-key <key>   # erreichbar, mit Key
 | `POST /v1/systemone/separate` | jede Frage in ihrem eigenen Pass |
 | `GET /v1/models` | die Namen, die eine Anfrage als `model` nennen darf |
 | `GET /health` | für Container-Probes, ohne Key |
+| `GET /` | eine leere Seite mit 200, ohne Key |
 
 Jeder Fehler ist ein Status mit `{"error": {"type", "message"}}` und nie eine
 Antwort: 400 für eine ungültige Anfrage, 401 ohne passenden Key, 404 für ein
@@ -198,7 +199,7 @@ Spiegel (oder auf einen `file://`-Baum).
 
 Geprüft: beide Backbones (attention-only Qwen3 und das hybride Qwen3.5 mit Gated
 DeltaNet), beide Forward-Pässe gegen Transkriptionen der Hugging-Face-Modelle,
-116 Tests. Ein echter Checkpoint lädt und antwortet sinnvoll — `jaredpalmer/kev-0.6b`
+117 Tests. Ein echter Checkpoint lädt und antwortet sinnvoll — `jaredpalmer/kev-0.6b`
 trifft alle sieben eindeutigen Fälle von `sanity`, und mit vertauschten
 Pointer-Head-Projektionen keinen einzigen.
 

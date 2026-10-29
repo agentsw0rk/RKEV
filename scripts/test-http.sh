@@ -102,6 +102,10 @@ if [ "$status" = "000" ]; then
 fi
 [ "$status" = 200 ] && ok "GET /health is 200" || fail "GET /health is 200" "got $status: $body"
 
+call GET / ""
+[ "$status" = 200 ] && [ -z "$body" ] && ok "GET / is an empty 200" \
+    || fail "GET / is an empty 200" "got $status: $(printf '%s' "$body" | head -c 200)"
+
 call GET /v1/models "" ${auth[@]+"${auth[@]}"}
 if [ "$status" = 200 ]; then
     expect '.models | index("kev-latest") != null' "GET /v1/models lists kev-latest"
