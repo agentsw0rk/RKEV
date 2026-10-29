@@ -120,7 +120,11 @@ scripts/start-http.sh --host 0.0.0.0         # von außen erreichbar, z.B. im Co
 
 Das Skript findet das Basismodell über die `adapter_config.json` des Checkpoints
 (wie `scripts/local.sh --fetch` es ablegt), baut `serve` im Release-Modus und
-startet es. Direkt geht es auch:
+startet es. `scripts/test-http.sh` prüft einen laufenden Server mit `curl` gegen
+die Akzeptanztests: Statuscodes, Antworttypen, Optionsnamen und -reihenfolge,
+`Upgrade: h2c`, die Fehler, und ob der Server danach noch antwortet. Ob die
+Antworten inhaltlich stimmen, braucht einen trainierten Checkpoint; das sind
+deshalb nur Warnungen, außer mit `--strict`. Direkt geht es auch:
 
 ```bash
 cargo run --release --features candle,server --example serve -- \
@@ -183,6 +187,8 @@ scripts/parity.sh --base <dir> --checkpoint <dir>    # gegen einen Server aufzei
 scripts/parity.sh --check-only --base <dir> --checkpoint <dir>   # und offline nachprüfen
 scripts/start-http.sh                           # HTTP-Server vor ~/models/kev-0.6b auf :8090
 scripts/start-http.sh --host 0.0.0.0 --api-key <key>   # von außen erreichbar, mit Key
+scripts/test-http.sh                            # prüft einen laufenden Server
+scripts/test-http.sh --url http://rkev:8090 --api-key <key> --strict
 ```
 
 `scripts/local.sh --help` listet den Rest. `KEV_HF` zeigt die Downloads auf einen
