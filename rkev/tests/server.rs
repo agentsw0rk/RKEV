@@ -453,3 +453,12 @@ async fn models_lists_the_names_the_server_answers_to() {
     assert_eq!(reply.status, 200, "body: {}", reply.body);
     assert_eq!(reply.json()["models"], json!(["kev-latest", "kev-0.6b"]));
 }
+
+#[tokio::test]
+async fn with_a_key_set_the_api_needs_it_but_the_health_probe_does_not() {
+    let server = Server::new(Canned(shipping())).api_key(Some("s3cret".to_string()));
+    let address = start(server).await;
+
+    assert_eq!(get(address, "/v1/models").await.status, 401);
+    assert_eq!(get(address, "/health").await.status, 200);
+}

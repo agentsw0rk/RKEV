@@ -209,6 +209,10 @@ async fn health() -> Json<serde_json::Value> {
 /// The names a request's `model` may ask for, in the order they were added.
 /// The document this follows does not pin the shape `jev-java` reads here, so
 /// this is the smallest one that carries the list.
-async fn models<B>(State(shared): State<Shared<B>>) -> Json<serde_json::Value> {
-    Json(json!({ "models": &*shared.models }))
+async fn models<B>(
+    State(shared): State<Shared<B>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, Failure> {
+    shared.authorize(&headers)?;
+    Ok(Json(json!({ "models": &*shared.models })))
 }
