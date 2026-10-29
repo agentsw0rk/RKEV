@@ -17,7 +17,7 @@ use axum::extract::State;
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -84,6 +84,7 @@ where
         };
         Router::new()
             .route("/v1/systemone", post(system_one::<B>))
+            .route("/health", get(health))
             .with_state(shared)
     }
 
@@ -196,4 +197,10 @@ impl IntoResponse for Failure {
         let body = json!({ "error": { "type": self.kind, "message": self.message } });
         (self.status, Json(body)).into_response()
     }
+}
+
+/// Liveness for Docker and Kubernetes. A `Server` only exists around a backend
+/// that is already loaded, so answering at all means ready.
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({ "status": "ok" }))
 }

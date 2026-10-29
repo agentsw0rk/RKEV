@@ -165,13 +165,27 @@ impl Reply {
     }
 }
 
+async fn post(address: SocketAddr, path: &str, extra_headers: &[&str], body: &str) -> Reply {
+    call("POST", address, path, extra_headers, body).await
+}
+
+async fn get(address: SocketAddr, path: &str) -> Reply {
+    call("GET", address, path, &[], "").await
+}
+
 /// One HTTP/1.1 request, written by hand. `Connection: close` unless the caller
 /// sends its own `Connection` header; either way the reply is read by its
 /// `Content-Length`, so a connection the server keeps open cannot hang the test.
-async fn post(address: SocketAddr, path: &str, extra_headers: &[&str], body: &str) -> Reply {
+async fn call(
+    method: &str,
+    address: SocketAddr,
+    path: &str,
+    extra_headers: &[&str],
+    body: &str,
+) -> Reply {
     let mut stream = TcpStream::connect(address).await.unwrap();
     let mut request = format!(
-        "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\n",
         body.len()
     );
@@ -417,4 +431,15 @@ async fn a_request_past_the_concurrency_limit_is_a_503_at_once() {
     assert_eq!(second.json()["error"]["type"], "unavailable");
     held.release.notify_one();
     assert_eq!(first.await.unwrap().status, 200);
+}
+
+#[tokio::test]
+async fn health_answers_200_once_the_server_is_up() {
+    // The server is built around a loaded backend, so being up is being ready.
+    let address = start(Server::new(Canned(shipping()))).await;
+
+    let reply = get(address, "/health").await;
+
+    assert_eq!(reply.status, 200, "body: {}", reply.body);
+    assert_eq!(reply.json()["status"], "ok");
 }
