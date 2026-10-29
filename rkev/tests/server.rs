@@ -309,3 +309,19 @@ async fn a_model_the_server_does_not_serve_is_a_404() {
         "error: {error}"
     );
 }
+
+#[tokio::test]
+async fn kev_latest_the_served_name_and_no_model_at_all_are_answered() {
+    let address = start(Server::new(Canned(shipping())).model_name("kev-0.6b")).await;
+
+    for model in [json!("kev-latest"), json!("kev-0.6b"), Value::Null] {
+        let mut request = choice_request();
+        if !model.is_null() {
+            request["model"] = model.clone();
+        }
+
+        let reply = post(address, "/v1/systemone", &[], &request.to_string()).await;
+
+        assert_eq!(reply.status, 200, "model {model}: {}", reply.body);
+    }
+}
