@@ -162,7 +162,7 @@ Every failure is a status and `{"error": {"type", "message"}}`, never an answer:
 | 400 | `invalid_request` | not JSON, not a System One request, or 0 or more than 255 options or levels |
 | 401 | `unauthorized` | a key is set and `Authorization: Bearer <key>` is missing or wrong |
 | 404 | `model_not_found` | `model` names something other than `kev-latest` or the served name |
-| 413 | `state_too_long` | the request does not fit the model's context |
+| 413 | `state_too_long` | the request does not fit the model's context; a state that is too long is refused, never cut, and the message names its length and the limit (`kev.serve` says 422 here) |
 | 500 | `internal` | the engine failed |
 | 503 | `unavailable` | every slot is busy; refused at once rather than queued past a client's timeout |
 

@@ -234,6 +234,27 @@ fn a_response_without_latency_omits_the_field() {
 }
 
 #[test]
+fn a_truncating_servers_marks_survive_a_round_trip() {
+    // kev.serve with KEV_TRUNCATE_STATES=1 (Server._body): `truncated` beside
+    // the answers, the state's length and what was read under `usage`.
+    let body = json!({
+        "model": "kev-latest",
+        "answers": {"a": {"type": "noul", "noul": 0.5}},
+        "usage": {"input_tokens": 20, "output_tokens": 30,
+                  "state_tokens": 70000, "state_tokens_used": 65536},
+        "latency_ms": 12.5,
+        "truncated": true
+    });
+
+    let response: SystemOneResponse = serde_json::from_value(body.clone()).unwrap();
+
+    assert_eq!(response.truncated, Some(true));
+    assert_eq!(response.usage.state_tokens, Some(70000));
+    assert_eq!(response.usage.state_tokens_used, Some(65536));
+    assert_eq!(serde_json::to_value(&response).unwrap(), body);
+}
+
+#[test]
 fn a_request_survives_a_round_trip_through_json() {
     // The request types deserialise as well as serialise, so a recorded request
     // can be replayed - which is what examples/parity.rs does with the body the

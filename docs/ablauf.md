@@ -60,8 +60,16 @@ Drei Dinge entstehen hier mit:
 
 Außerdem wird Aufrufertext maskiert: `<|name|>` wird zu `<¦name¦>`. Ohne das
 könnte ein State eine Frage aufmachen, denn ein Tokenizer erkennt seine
-Spezialtokens auch mitten im Text. Der State wird auf 8192 Tokens gekürzt
-(trainiert wurde auf 384 State-Tokens und 1024 für State plus einen Zweig).
+Spezialtokens auch mitten im Text. Ein State über 8192 Tokens (`<state>`
+mitgezählt) wird abgelehnt, mit Länge und Limit in der Meldung, statt still
+gekürzt zu werden. Gekürzt würde das Modell eine Frage über den Anfang eines
+Dokuments beantworten, als ginge sie über das ganze. So macht es auch Kev seit
+1.0. Wer das Kürzen trotzdem will, schaltet es mit
+`LocalEngine::with_truncated_states(true)` ein (bei Kev
+`KEV_TRUNCATE_STATES=1`). Dann sagt jede Antwort, ob gekürzt wurde: `truncated`,
+dazu `usage.state_tokens` (der ganze State) und `usage.state_tokens_used` (was
+das Modell gelesen hat). Trainiert wurde auf 384 State-Tokens und 1024 für
+State plus einen Zweig.
 
 ## 3. Tokens → Hidden States (`src/backend.rs`, `src/qwen3.rs`, `src/qwen3_5.rs`)
 

@@ -217,6 +217,11 @@ pub struct SystemOneResponse {
     pub usage: Usage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<f64>,
+    /// Whether the state was cut to fit. Only an engine asked to cut long
+    /// states says anything here (`kev.serve` with `KEV_TRUNCATE_STATES=1`);
+    /// otherwise a long state is refused and this stays `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 impl SystemOneResponse {
@@ -234,6 +239,13 @@ pub struct Usage {
     pub input_tokens: u64,
     #[serde(default)]
     pub output_tokens: u64,
+    /// The request's state in tokens, `<state>` included. Reported beside
+    /// [`SystemOneResponse::truncated`] only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_tokens: Option<u64>,
+    /// How many of them the model read: fewer only when the state was cut.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_tokens_used: Option<u64>,
 }
 
 /// One answer, shaped by the question type it belongs to.

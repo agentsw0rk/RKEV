@@ -356,22 +356,124 @@ fn a_question_too_long_for_the_context_is_a_validation_error() {
     assert!(error.to_string().contains("context"), "{error}");
 }
 
+/// Cutting the state would answer a question about the start of a document as
+/// if it were about all of it, so a state over the limit is refused, saying by
+/// how much: kev.model.admit since kev 2ea5660.
 #[test]
-fn a_state_longer_than_the_context_is_truncated_rather_than_refused() {
+fn a_state_longer_than_the_context_is_refused_rather_than_truncated() {
+    let (stub, _, passes) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head()).with_limits(Limits {
+        max_state: 8,
+        max_branch: 64,
+    });
+
+    // 36 bytes, so 36 stub tokens and 37 with <state>.
+    let error = engine
+        .system_one_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
+        )
+        .unwrap_err();
+
+    assert!(error.is_validation(), "got {error:?}");
+    let message = error.to_string();
+    assert!(
+        message.contains("state is 37 tokens, over the 8-token limit"),
+        "{message}"
+    );
+    assert_eq!(passes.load(Ordering::SeqCst), 0, "refused before any pass");
+}
+
+/// `KEV_TRUNCATE_STATES=1` upstream: cutting a state is something a caller asks
+/// for, and then the response says it happened and by how much.
+#[test]
+fn a_caller_can_ask_for_long_states_to_be_cut_and_is_told() {
+    let (stub, log, _) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head())
+        .with_limits(Limits {
+            max_state: 8,
+            max_branch: 64,
+        })
+        .with_truncated_states(true);
+
+    let response = engine
+        .system_one_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
+        )
+        .unwrap();
+
+    assert_eq!(response.truncated, Some(true));
+    assert_eq!(response.usage.state_tokens, Some(37));
+    assert_eq!(response.usage.state_tokens_used, Some(8));
+    let log = log.lock().unwrap();
+    assert_eq!(log.passes[0].branch(0).len(), 8, "<state> and the first 7");
+}
+
+/// An engine that may cut says so on every response, including the ones where
+/// it did not; one that may not says nothing, so the body stays the one the
+/// TypeSafe clients have always parsed.
+#[test]
+fn only_an_engine_that_may_cut_reports_whether_it_did() {
+    let ask = |truncate: bool| {
+        let (stub, _, _) = Stub::new(vec![vec![0.5, 0.5]]);
+        LocalEngine::new(stub, identity_head())
+            .with_truncated_states(truncate)
+            .system_one_blocking(&SystemOneRequest::new("short").ask("q", Noul::new("?")))
+            .unwrap()
+    };
+
+    let may_cut = ask(true);
+    assert_eq!(may_cut.truncated, Some(false));
+    assert_eq!(may_cut.usage.state_tokens, Some(6));
+    assert_eq!(may_cut.usage.state_tokens_used, Some(6));
+
+    let may_not = ask(false);
+    assert_eq!(may_not.truncated, None);
+    assert_eq!(may_not.usage.state_tokens, None);
+    assert_eq!(may_not.usage.state_tokens_used, None);
+}
+
+/// `/v1/systemone/separate` runs a pass per question on one state, and says how
+/// much of that state it read, as `truncation_marks` does upstream.
+#[test]
+fn asking_questions_separately_reports_a_cut_state_too() {
+    let (stub, _, _) = Stub::new(vec![vec![0.5, 0.5]; 2]);
+    let engine = LocalEngine::new(stub, identity_head())
+        .with_limits(Limits {
+            max_state: 8,
+            max_branch: 64,
+        })
+        .with_truncated_states(true);
+
+    let response = engine
+        .system_one_separate_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens")
+                .ask("a", Noul::new("?"))
+                .ask("b", Noul::new("!")),
+        )
+        .unwrap();
+
+    assert_eq!(response.truncated, Some(true));
+    assert_eq!(response.usage.state_tokens, Some(37));
+    assert_eq!(response.usage.state_tokens_used, Some(8));
+}
+
+/// `test_serve_admits_a_state_exactly_at_the_limit` upstream: the limit counts
+/// `<state>`, and a state that fills it exactly is read whole.
+#[test]
+fn a_state_exactly_at_the_limit_is_read_whole() {
     let (stub, log, _) = Stub::new(vec![vec![0.5, 0.5]]);
     let engine = LocalEngine::new(stub, identity_head()).with_limits(Limits {
         max_state: 8,
         max_branch: 64,
     });
 
-    let response = engine.system_one_blocking(
-        &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
-    );
+    // Seven bytes, so seven stub tokens and eight with <state>.
+    let response =
+        engine.system_one_blocking(&SystemOneRequest::new("seven b").ask("q", Noul::new("?")));
 
     assert!(response.is_ok(), "{:?}", response.unwrap_err());
     let log = log.lock().unwrap();
-    let state = log.passes[0].branch(0);
-    assert_eq!(state.len(), 8, "the state kept its delimiter and 7 tokens");
+    assert_eq!(log.passes[0].branch(0).len(), 8, "<state> and all 7 tokens");
 }
 
 #[test]
@@ -506,6 +608,40 @@ fn one_round_of_permuting_moves_nothing() {
     for spread in permuted["spread"].as_object().unwrap().values() {
         assert_eq!(spread.as_f64().unwrap(), 0.0);
     }
+}
+
+/// `truncation_marks` in kev.serve: the permute envelope is built from several
+/// answers on one state, and carries a cutting engine's marks from any of them.
+#[test]
+fn permuting_a_cut_state_says_so_too() {
+    let permute = |truncate: bool| {
+        let (stub, _, _) = Stub::new(vec![vec![0.5, 0.3, 0.2]; 2]);
+        LocalEngine::new(stub, identity_head())
+            .with_limits(Limits {
+                max_state: 8,
+                max_branch: 64,
+            })
+            .with_truncated_states(truncate)
+            .permute_blocking(
+                &SystemOneRequest::new("a state far longer than eight tokens").ask(
+                    "team",
+                    Choice::new("?")
+                        .option_bare("a")
+                        .option_bare("b")
+                        .option_bare("c"),
+                ),
+                "team",
+                2,
+                0,
+            )
+    };
+
+    let cut = permute(true).unwrap();
+    assert_eq!(cut["truncated"], true);
+    assert_eq!(cut["usage"]["state_tokens"], 37);
+    assert_eq!(cut["usage"]["state_tokens_used"], 8);
+
+    assert!(permute(false).unwrap_err().is_validation());
 }
 
 #[test]

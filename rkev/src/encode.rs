@@ -54,7 +54,8 @@ pub(crate) struct Delimiters {
 /// never trained on.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
-    /// The state is truncated to this many tokens, delimiter included.
+    /// The longest state accepted, delimiter included; a longer one is
+    /// refused rather than cut.
     pub max_state: usize,
     /// A state plus one question branch may not exceed this.
     pub max_branch: usize,
@@ -117,6 +118,9 @@ pub(crate) struct Encoding {
     /// Which option span each token belongs to. Empty unless the layout is
     /// option-isolated, since nothing else needs to know.
     pub slots: Vec<OptionSlot>,
+    /// The request's whole state in tokens, `<state>` included: more than the
+    /// state in `ids` only when it was cut.
+    pub state_tokens: usize,
 }
 
 impl Encoding {
@@ -130,6 +134,11 @@ impl Encoding {
             positions.extend(options.iter().copied());
         }
         positions
+    }
+
+    /// How many of the state's tokens are in `ids`, `<state>` included.
+    pub fn state_tokens_used(&self) -> usize {
+        self.segments.iter().take_while(|s| **s == 0).count()
     }
 
     /// How many readout positions one question contributes: `<decide>` plus
@@ -189,13 +198,16 @@ fn special_at(bytes: &[u8], at: usize) -> Option<&str> {
 /// `tokenise` must not emit special tokens — the text is escaped first, so a
 /// tokenizer that treats `<|...|>` as literal text is enough.
 ///
-/// The state is truncated to fit `limits`, as the server does; a question whose
-/// branch does not fit is a request error, not a silently shortened prompt.
+/// A state over `limits` is a request error naming its length and the limit, as
+/// `kev.model.admit` makes it, unless `truncate` asks for its first
+/// `max_state` tokens instead (`Encoding::state_tokens` then says how many it
+/// had). A question whose branch does not fit is an error either way.
 pub(crate) fn encode<F>(
     record: &Record,
     delimiters: &Delimiters,
     limits: Limits,
     isolation: bool,
+    truncate: bool,
     mut tokenise: F,
 ) -> Result<Encoding>
 where
@@ -209,6 +221,15 @@ where
     }
 
     let state = tokenise(&escape_specials(&record.state))?;
+    // kev.model.admit: the limit counts the <state> token too.
+    if !truncate && state.len() + 1 > limits.max_state {
+        return Err(Error::ContextOverflow(format!(
+            "state is {} tokens, over the {}-token limit (the <state> token included): \
+             shorten the document or split it across requests",
+            state.len() + 1,
+            limits.max_state
+        )));
+    }
     let mut ids = Vec::with_capacity(state.len() + 1);
     ids.push(delimiters.state);
     ids.extend(state.iter().take(limits.max_state - 1));
@@ -296,6 +317,7 @@ where
         decide,
         options,
         slots: if isolation { slots } else { Vec::new() },
+        state_tokens: state.len() + 1,
     })
 }
 #[cfg(test)]
