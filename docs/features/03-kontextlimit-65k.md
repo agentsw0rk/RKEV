@@ -64,3 +64,35 @@ heißt also nicht, dass die Antwort gedeckt ist. Das gehört neben das Limit in
 - ein 64k-State auf der CPU entweder beantwortet oder sauber abgelehnt wird,
   nie mit einem Absturz,
 - das gewählte Limit gemessen begründet und dokumentiert ist.
+
+## Gemessen (2026-10-30)
+
+`what_a_long_state_costs_one_attention_layer` in `rkev/src/weights.rs`
+(`#[ignore]`d, `cargo test --release --features candle --lib -- --ignored
+--nocapture`): Spitzenspeicher **einer** Attention-Schicht beim Prefill eines
+States, mit den Formen von kev-0.6b (16 Query-Köpfe, 8 KV-Köpfe, 128 breit),
+in f32, Linux-Container mit 8 Kernen:
+
+| State | Spitze über Start |
+|---|---|
+| 512 | 60 MB |
+| 1.024 | 188 MB |
+| 2.048 | 641 MB |
+| 4.096 | 2.386 MB |
+
+Pro Verdopplung etwa das Vierfache, denn Maske, Scores und Softmax sind
+`L x L`. Hochgerechnet, nicht gemessen: 8.192 → ~9,5 GB, 65.536 → ~600 GB.
+Schon das heutige Limit von 8.192 braucht also pro Schicht so viel Speicher,
+wie dieser Container insgesamt hat.
+
+Selbst wenn die Attention in Stücken gerechnet würde, bleibt bei 64k der
+KV-Cache: kev-0.6b hält pro Token und Schicht 2 x 8 x 128 Werte. Über 28
+Schichten sind das in f32 ~229 KB pro Token, also ~15 GB für einen
+65.536-Token-State. Gerechnet, nicht gemessen.
+
+## Was 65.536 hier überhaupt brächte
+
+Von den 1.0-Checkpoints, die rkev laden kann (0.8B, 4B, 9B), ist laut ihren
+Modellkarten nur ein Kontext von **8.192 Tokens** validiert. Die 65.536 sind
+nur für Kev-27B validiert, und den unterstützt rkev nicht (Feature 05). Ein
+höheres Limit würde also Antworten erlauben, die keine Messung deckt.
