@@ -5,7 +5,7 @@
 #   scripts/local.sh                            # the offline suite; needs no weights
 #   scripts/local.sh --checkpoint ~/models/kev-0.6b
 #                                               # ... plus every check a checkpoint allows
-#   scripts/local.sh --fetch jaredpalmer/kev-0.6b
+#   scripts/local.sh --fetch jaredpalmer/kev-0.6b   # or repo@v1.0 for a tag
 #                                               # download it first, with curl
 #   scripts/local.sh --checkpoint <dir> --measure   # also the timing measurements
 #   scripts/local.sh --checkpoint <dir> --skip-suite  # only the checkpoint checks
