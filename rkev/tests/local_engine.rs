@@ -356,22 +356,31 @@ fn a_question_too_long_for_the_context_is_a_validation_error() {
     assert!(error.to_string().contains("context"), "{error}");
 }
 
+/// Cutting the state would answer a question about the start of a document as
+/// if it were about all of it, so a state over the limit is refused, saying by
+/// how much: kev.model.admit since kev 2ea5660.
 #[test]
-fn a_state_longer_than_the_context_is_truncated_rather_than_refused() {
-    let (stub, log, _) = Stub::new(vec![vec![0.5, 0.5]]);
+fn a_state_longer_than_the_context_is_refused_rather_than_truncated() {
+    let (stub, _, passes) = Stub::new(vec![vec![0.5, 0.5]]);
     let engine = LocalEngine::new(stub, identity_head()).with_limits(Limits {
         max_state: 8,
         max_branch: 64,
     });
 
-    let response = engine.system_one_blocking(
-        &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
-    );
+    // 36 bytes, so 36 stub tokens and 37 with <state>.
+    let error = engine
+        .system_one_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
+        )
+        .unwrap_err();
 
-    assert!(response.is_ok(), "{:?}", response.unwrap_err());
-    let log = log.lock().unwrap();
-    let state = log.passes[0].branch(0);
-    assert_eq!(state.len(), 8, "the state kept its delimiter and 7 tokens");
+    assert!(error.is_validation(), "got {error:?}");
+    let message = error.to_string();
+    assert!(
+        message.contains("state is 37 tokens, over the 8-token limit"),
+        "{message}"
+    );
+    assert_eq!(passes.load(Ordering::SeqCst), 0, "refused before any pass");
 }
 
 #[test]

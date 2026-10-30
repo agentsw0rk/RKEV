@@ -99,7 +99,7 @@ Client gibt Status und Body in seiner Fehlermeldung weiter.
 | 400 | `invalid_request` | kein JSON, keine System-One-Anfrage, unbekannter Fragetyp, 0 oder mehr als 255 Optionen oder Stufen |
 | 401 | `unauthorized` | am Server ist ein Key gesetzt, und der Header fehlt oder passt nicht |
 | 404 | `model_not_found` | `model` nennt einen Namen, den der Server nicht bedient |
-| 413 | `state_too_long` | die Anfrage passt nicht ins Kontextfenster des Modells |
+| 413 | `state_too_long` | die Anfrage passt nicht ins Kontextfenster des Modells; ein zu langer State wird abgelehnt, nicht gekürzt, und die Meldung nennt Länge und Limit (`kev.serve` antwortet hier mit 422) |
 | 500 | `internal` | das Modell ist gescheitert |
 | 503 | `unavailable` | alle Plätze belegt (`--max-concurrent`) |
 

@@ -54,7 +54,8 @@ pub(crate) struct Delimiters {
 /// never trained on.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
-    /// The state is truncated to this many tokens, delimiter included.
+    /// The longest state accepted, delimiter included; a longer one is
+    /// refused rather than cut.
     pub max_state: usize,
     /// A state plus one question branch may not exceed this.
     pub max_branch: usize,
@@ -189,8 +190,9 @@ fn special_at(bytes: &[u8], at: usize) -> Option<&str> {
 /// `tokenise` must not emit special tokens — the text is escaped first, so a
 /// tokenizer that treats `<|...|>` as literal text is enough.
 ///
-/// The state is truncated to fit `limits`, as the server does; a question whose
-/// branch does not fit is a request error, not a silently shortened prompt.
+/// A state over `limits` is a request error naming its length and the limit, as
+/// `kev.model.admit` makes it, and so is a question whose branch does not fit:
+/// neither is silently shortened.
 pub(crate) fn encode<F>(
     record: &Record,
     delimiters: &Delimiters,
@@ -209,6 +211,15 @@ where
     }
 
     let state = tokenise(&escape_specials(&record.state))?;
+    // kev.model.admit: the limit counts the <state> token too.
+    if state.len() + 1 > limits.max_state {
+        return Err(Error::ContextOverflow(format!(
+            "state is {} tokens, over the {}-token limit (the <state> token included): \
+             shorten the document or split it across requests",
+            state.len() + 1,
+            limits.max_state
+        )));
+    }
     let mut ids = Vec::with_capacity(state.len() + 1);
     ids.push(delimiters.state);
     ids.extend(state.iter().take(limits.max_state - 1));
