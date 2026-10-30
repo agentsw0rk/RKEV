@@ -118,6 +118,8 @@ fn answers_have_the_shapes_and_formulas_the_python_gives() {
     assert_eq!(score.as_score(), Some(1.5));
     assert_eq!(score.probabilities().unwrap()["2"], 0.6);
     assert_eq!(score.legend().unwrap()["1"], "mid");
+    // 1 - (0.1*2 + 0.3*1) / (2/3)
+    assert_eq!(score.confidence(), Some(0.25));
 }
 
 /// `test_to_answers_choice_probabilities_sum_within_typesafe_tolerance`: four
@@ -186,7 +188,7 @@ fn the_confidence_edge_cases_are_the_python_ones() {
     assert_eq!(ask(vec![0.5, 0.5], 2, false), 0.0);
     // All on one option, and all on one level.
     assert!((ask(vec![0.9999, 0.00005, 0.00005], 3, false) - 1.0).abs() < 1e-3);
-    assert_eq!(ask(vec![0.00002, 0.99996, 0.00002], 3, true), 1.0);
+    assert_eq!(ask(vec![0.000002, 0.999996, 0.000002], 3, true), 1.0);
     // Split across the ends of a scale: somewhere in range, and not certain.
     let split = ask(vec![0.5, 0.00002, 0.49998], 3, true);
     assert!((0.0..=1.0).contains(&split), "{split}");

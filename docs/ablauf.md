@@ -118,7 +118,11 @@ ist. Aus der Verteilung wird die Antwort:
 - `noul`: `p(yes)`, und keine Confidence — die Wahrscheinlichkeit *ist* die
   Antwort.
 - `choice`: die wahrscheinlichste Option, Confidence `(p_max − 1/K)/(1 − 1/K)`.
-- `score`: der mittlere Stufenindex, Confidence `1 − E|Stufe − Modus|/(L−1)`.
+- `score`: der mittlere Stufenindex, Confidence `max(0, 1 − E|Stufe − Modus|/D)`.
+  `D` ist der mittlere Abstand einer Gleichverteilung über die `L` Stufen von
+  ihrer Mitte `(L−1)/2`, bei drei Stufen also 2/3. Alles auf einer Stufe ergibt 1,
+  gleichverteilt oder breiter gestreut 0. Das ist die Formel aus TypeSafes
+  Referenz-Adapter (`system-one-adapter` 0.2.1), der Kev seit 2026-09-25 folgt.
 
 Alles auf vier Dezimalen gerundet, wie in der Referenz. Die Confidence ist ein Maß
 für die *Form* der Verteilung, keine gemessene Trefferquote — TypeSafes

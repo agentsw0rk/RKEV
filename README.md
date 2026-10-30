@@ -64,6 +64,11 @@ frustration    Frustrated   level 1.04   confidence 0.97
 Auf der CPU in f32 dauerte dieselbe Anfrage 1671 ms; die Wahrscheinlichkeiten
 wichen um höchstens 0.01 ab.
 
+Die `confidence` von `frustration` stammt dort noch von der alten Score-Formel
+(`1 − E|Stufe − Modus|/(L−1)`). Seit dem Abgleich mit Kev 1.0 gilt die von
+TypeSafes Referenz-Adapter, und nach ihr ergäben die gezeigten, gerundeten
+Wahrscheinlichkeiten etwa 0.91. Das ist nachgerechnet, nicht neu gemessen.
+
 Das Ticket nennt absichtlich drei Abteilungen gleichzeitig; bei eindeutigen
 Tickets sitzt dieses Modell auf 1.00.
 

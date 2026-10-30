@@ -186,9 +186,13 @@ fn choice_confidence(p: &[f64]) -> f64 {
     (max - 1.0 / k) / (1.0 - 1.0 / k)
 }
 
-/// `1 - E|level - mode| / (L - 1)`: how tightly a score sits on its most likely
-/// level. An approximation of TypeSafe's unpublished statistic.
+/// `max(0, 1 - E|level - mode| / D)`: how tightly a score sits on its most likely
+/// level, where `D` is the mean absolute deviation of a uniform distribution
+/// over the levels around its mean `(L - 1) / 2`. Mirrors `score_confidence`
+/// in `kev/api.py`, which follows TypeSafe's reference adapter
+/// (`system-one-adapter` 0.2.1, `_utils/confidence_metrics.py`).
 fn score_confidence(p: &[f64]) -> f64 {
+    let levels = p.len() as f64;
     if p.len() == 1 {
         return 1.0;
     }
@@ -198,7 +202,13 @@ fn score_confidence(p: &[f64]) -> f64 {
         .enumerate()
         .map(|(level, p)| p * (level as f64 - mode).abs())
         .sum();
-    1.0 - spread / (p.len() - 1) as f64
+    let centre = (levels - 1.0) / 2.0;
+    let uniform: f64 = (0..p.len())
+        .map(|level| (level as f64 - centre).abs())
+        .sum::<f64>()
+        / levels;
+    // Anything as spread as uniform, or more, is no confidence at all.
+    (1.0 - spread / uniform).max(0.0)
 }
 
 /// The first index holding the largest value, as Python's `max(range(n), key=)`

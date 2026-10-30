@@ -106,9 +106,10 @@ fn the_answers_reproduce_the_worked_example_from_the_kev_readme() {
     assert_eq!(response.answer("escalate").unwrap().as_noul(), Some(0.93));
 
     let frustration = response.answer("frustration").unwrap();
-    // The mean level index, and 1 - E|level - mode| / (L - 1).
+    // The mean level index, and 1 - E|level - mode| / (2/3), which the README
+    // prints as 0.34.
     assert_eq!(frustration.as_score(), Some(1.44));
-    assert_eq!(frustration.confidence(), Some(0.78));
+    assert_eq!(frustration.confidence(), Some(0.3399));
     assert_eq!(frustration.probabilities().unwrap()["0"], 0.0);
     assert_eq!(frustration.probabilities().unwrap()["1"], 0.56);
     assert_eq!(frustration.legend().unwrap()["2"], "Very angry");
@@ -318,7 +319,7 @@ fn the_answers_are_billed_the_way_the_server_serialises_them() {
          \"escalate\": {\"type\": \"noul\", \"noul\": 0.93}, \
          \"frustration\": {\"type\": \"score\", \"score\": 1.44, \
          \"legend\": {\"0\": \"Calm\", \"1\": \"Frustrated\", \"2\": \"Very angry\"}, \
-         \"probabilities\": {\"0\": 0.0, \"1\": 0.56, \"2\": 0.44}, \"confidence\": 0.78}}"
+         \"probabilities\": {\"0\": 0.0, \"1\": 0.56, \"2\": 0.44}, \"confidence\": 0.3399}}"
     );
     assert_eq!(response.usage.output_tokens, serialised.len() as u64);
     assert!(response.usage.input_tokens > 0);
