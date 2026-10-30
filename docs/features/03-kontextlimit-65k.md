@@ -1,6 +1,6 @@
 # 03 — Kontextlimit 65.536 Tokens
 
-**Status:** umgesetzt auf `feature/long-context` (2026-10-30) als „8.192 + Attention in Stücken“, noch nicht gemergt
+**Status:** umgesetzt auf `feature/long-context` (2026-10-30) als „8.192 + Attention in Stücken“, gemergt in `main`
 **Upstream:** [`9689666`](https://github.com/jaredpalmer/kev/commit/9689666) (2026-09-26),
 `kev/model.py`: `SERVE_MAX_STATE = 65536`, `SERVE_MAX_BRANCH = SERVE_MAX_STATE + 8192`;
 dazu für den Speicher [`71d4829`](https://github.com/jaredpalmer/kev/commit/71d4829)

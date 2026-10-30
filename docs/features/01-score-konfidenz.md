@@ -1,6 +1,6 @@
 # 01 — Score-Konfidenz nach Upstream
 
-**Status:** umgesetzt auf `feature/score-confidence` (2026-10-30), noch nicht gemergt
+**Status:** umgesetzt auf `feature/score-confidence` (2026-10-30), gemergt in `main`
 **Upstream:** [`134d170`](https://github.com/jaredpalmer/kev/commit/134d170) (2026-09-25),
 `kev/api.py`: `score_confidence`, `choice_confidence`, `_normalize`
 

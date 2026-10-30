@@ -1,6 +1,6 @@
 # 02 — Zu lange States ablehnen statt still kürzen
 
-**Status:** umgesetzt auf `feature/refuse-long-states` (2026-10-30), noch nicht gemergt
+**Status:** umgesetzt auf `feature/refuse-long-states` (2026-10-30), gemergt in `main`
 **Upstream:** [`2ea5660`](https://github.com/jaredpalmer/kev/commit/2ea5660) (2026-09-30),
 `kev/model.py` (`ContextOverflow`, `encode`, `admit`) und `kev/serve.py`
 (`Server.submit`, `_body`, `truncation_marks`, `/v1/models`)
