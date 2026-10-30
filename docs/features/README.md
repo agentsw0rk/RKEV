@@ -12,7 +12,7 @@ Reihenfolge:
 | 01 | [Score-Konfidenz nach Upstream](01-score-konfidenz.md) | ändert jede `score`-Antwort; klein | umgesetzt, Branch `feature/score-confidence` |
 | 02 | [Zu lange States ablehnen statt still kürzen](02-lange-states-ablehnen.md) | stilles Kürzen liefert eine Antwort auf eine andere Frage | umgesetzt, Branch `feature/refuse-long-states` |
 | 03 | [Kontextlimit 65.536 Tokens](03-kontextlimit-65k.md) | braucht 02; Speicherfrage auf der CPU offen | umgesetzt (Limit bleibt 8.192), Branch `feature/long-context` |
-| 04 | [Checkpoints der 1.0-Familie holen und dokumentieren](04-kev-1.0-checkpoints.md) | Doku und `--fetch`, ändert keine Antworten | offen |
+| 04 | [Checkpoints der 1.0-Familie holen und dokumentieren](04-kev-1.0-checkpoints.md) | Doku und `--fetch`, ändert keine Antworten | umgesetzt, Branch `feature/fetch-revision` |
 | 05 | [Kev-27B (volle Gewichte)](05-kev-27b.md) | zurückgestellt | zurückgestellt |
 
 Für jedes Feature gilt: TDD (`/tdd`), ein Branch, ein PR, Status hier und in der

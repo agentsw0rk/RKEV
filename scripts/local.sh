@@ -5,7 +5,7 @@
 #   scripts/local.sh                            # the offline suite; needs no weights
 #   scripts/local.sh --checkpoint ~/models/kev-0.6b
 #                                               # ... plus every check a checkpoint allows
-#   scripts/local.sh --fetch jaredpalmer/kev-0.6b
+#   scripts/local.sh --fetch jaredpalmer/kev-0.6b   # or repo@v1.0 for a tag
 #                                               # download it first, with curl
 #   scripts/local.sh --checkpoint <dir> --measure   # also the timing measurements
 #   scripts/local.sh --checkpoint <dir> --skip-suite  # only the checkpoint checks
@@ -14,6 +14,7 @@
 #
 #   --base <dir>      the base model, if it is not beside the checkpoint
 #   --dir <dir>       where --fetch puts models (default ~/models)
+#   --fetch-only      stop after --fetch: no build, no checks
 #   --force           re-download files (also the fix for an interrupted one)
 #   --release         build the suite optimised too (sanity always is)
 #   --records <file>  labelled records, JSONL; needs --questions or --request
@@ -52,6 +53,7 @@ device=""
 quantise=""
 checkpoint=""
 fetch=""
+fetch_only=0
 measure=0
 skip_suite=0
 force=0
@@ -62,6 +64,7 @@ while [ $# -gt 0 ]; do
         --checkpoint) checkpoint="${2:-}"; shift 2 ;;
         --base)       base="${2:-}"; shift 2 ;;
         --fetch)      fetch="${2:-}"; shift 2 ;;
+        --fetch-only) fetch_only=1; shift ;;
         --dir)        MODEL_DIR="${2:-}"; shift 2 ;;
         --records)    records="${2:-}"; shift 2 ;;
         --min-accuracy) minimum+=(--min-accuracy "${2:-}"); shift 2 ;;
@@ -73,7 +76,7 @@ while [ $# -gt 0 ]; do
         --skip-suite) skip_suite=1; shift ;;
         --force)      force=1; shift ;;
         --release)    release="--release"; shift ;;
-        -h|--help)    sed -n '3,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)    sed -n '3,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)            echo "error: unknown argument $1 (try --help)" >&2; exit 1 ;;
     esac
 done
@@ -159,10 +162,13 @@ auth=()
 [ -n "${HF_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $HF_TOKEN")
 
 # One file off the hub. -C - resumes a half-downloaded shard, and --fail turns a
-# 404 into an exit code instead of writing the error page into the file.
+# 404 into an exit code instead of writing the error page into the file. The
+# repo may carry a revision, kev's repo@v1.0; without one it is main.
 fetch_one() {
+    local repo="${1%%@*}" revision="main"
+    [[ "$1" == *@* ]] && revision="${1#*@}"
     curl -fL --retry 3 --retry-delay 2 -C - --progress-bar \
-        ${auth[@]+"${auth[@]}"} -o "$3" "$HF/$1/resolve/main/$2"
+        ${auth[@]+"${auth[@]}"} -o "$3" "$HF/$repo/resolve/$revision/$2"
 }
 
 # get <repo> <file> <into> [optional]
@@ -223,9 +229,27 @@ if [ -n "$fetch" ]; then
         echo "error: --fetch needs curl" >&2
         exit 1
     fi
-    checkpoint_dir="$MODEL_DIR/$(basename "$fetch")"
+    checkpoint_dir="$MODEL_DIR/$(basename "${fetch%%@*}")"
     echo "==> fetching $fetch into $checkpoint_dir"
+    # A present file counts as fetched, so a directory holds one revision only:
+    # REVISION says which. One fetched before it was written was main's, since
+    # nothing else could be fetched then. --force downloads every file again,
+    # so it may switch.
+    revision="main"
+    [[ "$fetch" == *@* ]] && revision="${fetch#*@}"
+    held=""
+    if [ -f "$checkpoint_dir/REVISION" ]; then
+        held="$(cat "$checkpoint_dir/REVISION")"
+    elif [ -n "$(ls -A "$checkpoint_dir" 2>/dev/null)" ]; then
+        held="main"
+    fi
+    if [ -n "$held" ] && [ "$held" != "$revision" ] && [ "$force" -eq 0 ]; then
+        echo "error: $checkpoint_dir holds revision $held, not $revision;" >&2
+        echo "       pass --force to replace it, or --dir for another directory" >&2
+        exit 1
+    fi
     mkdir -p "$checkpoint_dir"
+    printf '%s\n' "$revision" > "$checkpoint_dir/REVISION"
     for file in adapter_config.json adapter_model.safetensors head.pt; do
         get "$fetch" "$file" "$checkpoint_dir" || exit 1
     done
@@ -237,14 +261,15 @@ if [ -n "$fetch" ]; then
     # Which base it adapts is in adapter_config.json; fetch that too.
     repo="$(sed -n 's/.*"base_model_name_or_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
             "$checkpoint_dir/adapter_config.json" | head -1)"
-    # A checkpoint may name a base with a revision suffix (kev's @qwen3 style).
-    repo="${repo%%@*}"
+    # A checkpoint may name a base with a revision suffix (kev's @qwen3 style):
+    # fetched at that revision, into a directory named without it - the same
+    # name the base is looked for under below.
     if [ -z "$repo" ]; then
         echo "error: $checkpoint_dir/adapter_config.json names no base model" >&2
         exit 1
     fi
     if [ -z "$base" ]; then
-        base="$MODEL_DIR/$(echo "$repo" | tr 'A-Z/' 'a-z-')"
+        base="$MODEL_DIR/$(echo "${repo%%@*}" | tr 'A-Z/' 'a-z-')"
     fi
     echo "==> fetching base $repo into $base"
     mkdir -p "$base"
@@ -253,6 +278,10 @@ if [ -n "$fetch" ]; then
     done
     get "$repo" generation_config.json "$base" optional || exit 1
     get_weights "$repo" "$base" || exit 1
+    if [ "$fetch_only" -eq 1 ]; then
+        echo "==> fetched $checkpoint and $base"
+        exit 0
+    fi
 fi
 
 # ---------------------------------------------------------------------------

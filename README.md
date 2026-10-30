@@ -35,6 +35,32 @@ prüft danach alles, woran ein Checkpoint allein gemessen werden kann:
 scripts/local.sh --fetch jaredpalmer/kev-0.6b
 ```
 
+Eine Revision hängt mit `@` am Namen, so wie Kev 1.0 seine Checkpoints taggt:
+`scripts/local.sh --fetch jaredpalmer/kev-4b@v1.0`. Der Ordner heißt trotzdem
+`~/models/kev-4b`. Die Datei `REVISION` darin sagt, welche Revision er hält, und
+eine andere lädt das Skript nur mit `--force` hinein.
+
+### Kev 1.0
+
+Seit dem 2026-10-01 ist Kev als Familie versioniert. rkev kann drei davon laden,
+alle LoRA-Adapter auf einer hybriden Qwen3.5-Basis:
+
+| Checkpoint | Basis | validierter Kontext |
+|---|---|---|
+| `jaredpalmer/kev-0.8b@v1.0` | Qwen3.5-0.8B-Base | 8.192 Tokens |
+| `jaredpalmer/kev-4b@v1.0` | Qwen3.5-4B-Base | 8.192 Tokens |
+| `jaredpalmer/kev-9b@v1.0` | Qwen3.5-9B-Base | 8.192 Tokens |
+
+Kev-27B wird nicht unterstützt: Er besteht aus vollen Gewichten (51 GB) auf
+einer Basis, die rkev nicht kennt. Aus den Release-Notes von Kev 1.0: Kev-0.8B
+taugt nicht für Tool-Routing (When2Call unter Zufall), und Datumsrechnung ist
+bis 9B die schwächste Aufgabe.
+
+**Gelaufen ist mit rkev bisher keiner davon**, nur das ältere `kev-0.6b` (siehe
+*Stand und Grenzen*). Deshalb bleibt es der Standard in den Beispielen, bis ein
+1.0-Checkpoint `sanity` bestanden hat. Wer einen ausprobiert, nimmt am besten
+`kev-4b@v1.0`.
+
 Danach beantwortest du Anfragen direkt:
 
 ```bash
@@ -185,6 +211,8 @@ Alle in `rkev/examples/`:
 scripts/test.sh                                 # fmt, clippy, Tests, Feature-Matrix
 scripts/local.sh                                # die Offline-Suite allein
 scripts/local.sh --fetch jaredpalmer/kev-0.6b   # Checkpoint holen, dann alles prüfen
+scripts/local.sh --fetch jaredpalmer/kev-4b@v1.0 --fetch-only   # nur holen, getaggt
+scripts/test-fetch.sh                           # den Fetch-Pfad offline prüfen
 scripts/local.sh --checkpoint <dir> --measure   # dazu die Zeitmessungen
 scripts/local.sh --checkpoint <dir> \
     --questions q.json --records tickets.jsonl  # dazu deine eigenen Tickets
@@ -215,7 +243,8 @@ einmal — danach sind die Aufzeichnungen Dateien.
 
 Dazu drei Grenzen: auf einer CPU gibt es in candle kein bf16-Matmul (f16 ist die
 reduzierte Präzision dort), ein echter **hybrider** Checkpoint wurde noch nicht
-geladen, und gelaufen sind bisher CPU und Metal — sonst kein Gerät.
+geladen — und alle Checkpoints von Kev 1.0 sind hybrid —, und gelaufen sind
+bisher CPU und Metal, sonst kein Gerät.
 
 Der HTTP-Server ist offline getestet und lief mit `scripts/test-http.sh` gegen einen
 Spielzeug-Checkpoint: jede Route, Auth, `Upgrade: h2c`, die Fehlercodes. Gegen einen

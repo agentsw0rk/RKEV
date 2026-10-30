@@ -316,7 +316,16 @@ unambiguous tickets in `examples/sanity.rs`, with `shipping` and `returns` at
 the packed and prefilled paths agree to five decimals over the real layer stack.
 What has *not* happened is a comparison with the reference answering the same
 request, so treat the probabilities as unverified against the reference until it
-has. `examples/parity.rs` is that run: it answers a request in process and
+has.
+
+Kev 1.0 (2026-10-01) versions the family and tags every Hub repo `v1.0`. rkev
+can load three of the four: `jaredpalmer/kev-0.8b@v1.0`, `kev-4b@v1.0` and
+`kev-9b@v1.0`, all LoRA adapters over a hybrid Qwen3.5 base and validated to
+8192 state tokens. Kev-27B is full weights over a base this crate does not
+implement. None of the 1.0 checkpoints has been run with rkev yet, and no
+hybrid checkpoint has. `scripts/local.sh --fetch jaredpalmer/kev-4b@v1.0`
+fetches one at its tag into `~/models/kev-4b`, which records the revision in
+`REVISION` and refuses another one there unless given `--force`. `examples/parity.rs` is that run: it answers a request in process and
 compares every probability with a recorded server response.
 
 ```bash
