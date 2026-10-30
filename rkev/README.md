@@ -166,6 +166,10 @@ Every failure is a status and `{"error": {"type", "message"}}`, never an answer:
 | 500 | `internal` | the engine failed |
 | 503 | `unavailable` | every slot is busy; refused at once rather than queued past a client's timeout |
 
+The limit is 8192 state tokens, not kev 1.0's 65,536: the checkpoints rkev
+loads (Kev-0.8B, 4B, 9B) are validated to 8192 tokens only, according to their
+model cards. Past that, their answers are not covered by any measurement.
+
 400 is not `kev.serve`'s 422 on purpose: it is what the API document for the
 exported client asks for, and that client stops on any status but 200. Whether
 TypeSafe's own server uses these codes, and the shape `jev-java` reads from

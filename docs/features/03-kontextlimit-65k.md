@@ -1,6 +1,6 @@
 # 03 — Kontextlimit 65.536 Tokens
 
-**Status:** offen, setzt 02 voraus
+**Status:** umgesetzt auf `feature/long-context` (2026-10-30) als „8.192 + Attention in Stücken“, noch nicht gemergt
 **Upstream:** [`9689666`](https://github.com/jaredpalmer/kev/commit/9689666) (2026-09-26),
 `kev/model.py`: `SERVE_MAX_STATE = 65536`, `SERVE_MAX_BRANCH = SERVE_MAX_STATE + 8192`;
 dazu für den Speicher [`71d4829`](https://github.com/jaredpalmer/kev/commit/71d4829)
@@ -64,3 +64,57 @@ heißt also nicht, dass die Antwort gedeckt ist. Das gehört neben das Limit in
 - ein 64k-State auf der CPU entweder beantwortet oder sauber abgelehnt wird,
   nie mit einem Absturz,
 - das gewählte Limit gemessen begründet und dokumentiert ist.
+
+## Gemessen (2026-10-30)
+
+`what_a_long_state_costs_one_attention_layer` in `rkev/src/weights.rs`
+(`#[ignore]`d, `cargo test --release --features candle --lib -- --ignored
+--nocapture`): Spitzenspeicher **einer** Attention-Schicht beim Prefill eines
+States, mit den Formen von kev-0.6b (16 Query-Köpfe, 8 KV-Köpfe, 128 breit),
+in f32, Linux-Container mit 8 Kernen:
+
+| State | Spitze über Start |
+|---|---|
+| 512 | 60 MB |
+| 1.024 | 188 MB |
+| 2.048 | 641 MB |
+| 4.096 | 2.386 MB |
+
+Pro Verdopplung etwa das Vierfache, denn Maske, Scores und Softmax sind
+`L x L`. Hochgerechnet, nicht gemessen: 8.192 → ~9,5 GB, 65.536 → ~600 GB.
+Schon das heutige Limit von 8.192 braucht also pro Schicht so viel Speicher,
+wie dieser Container insgesamt hat.
+
+Selbst wenn die Attention in Stücken gerechnet würde, bleibt bei 64k der
+KV-Cache: kev-0.6b hält pro Token und Schicht 2 x 8 x 128 Werte. Über 28
+Schichten sind das in f32 ~229 KB pro Token, also ~15 GB für einen
+65.536-Token-State. Gerechnet, nicht gemessen.
+
+## Was 65.536 hier überhaupt brächte
+
+Von den 1.0-Checkpoints, die rkev laden kann (0.8B, 4B, 9B), ist laut ihren
+Modellkarten nur ein Kontext von **8.192 Tokens** validiert. Die 65.536 sind
+nur für Kev-27B validiert, und den unterstützt rkev nicht (Feature 05). Ein
+höheres Limit würde also Antworten erlauben, die keine Messung deckt.
+
+## Entscheidung und Ergebnis
+
+Entschieden am 2026-10-30: **Das Limit bleibt bei 8.192**, die Attention wird in
+Stücken gerechnet.
+
+- `grouped_attention` rechnet höchstens 512 Query-Zeilen auf einmal
+  (`QUERY_CHUNK`). Das ist exakt: Ein Unit-Test vergleicht gestückelt mit
+  ungestückelt, und `a_state_scored_in_query_chunks_matches_the_transcription`
+  prüft einen 600-Token-State gegen die Transkription, gepackt und über den
+  Prefix. Mit falsch gestückelter Maske wird er genau an Token 512 rot.
+- Gemessen, eine Attention-Schicht mit den Formen von kev-0.6b: 8.192 Tokens
+  brauchen jetzt **1,03 GB** statt hochgerechneter ~9,5 GB, 4.096 Tokens 460 MB
+  statt 2.386 MB.
+- Quadratisch bleibt die dichte Maske (268 MB bei 8.192). Für 65.536 wäre
+  sie 17 GB groß und müsste stückweise gebaut werden. Das ist nicht gemacht,
+  weil das Limit bleibt.
+- Die Abweichung zu Kev 1.0 steht in `docs/ablauf.md`, `docs/leistung.md` und
+  `rkev/README.md`.
+- Nicht gemacht: ein eigener Test auf dem Hybrid-Backbone (`qwen3_5.rs`). Seine
+  Attention-Schichten rufen dieselbe `grouped_attention`, die der Unit-Test
+  abdeckt. Ein Token-Budget für den Prefix-Cache war nur für 64k-States nötig.
