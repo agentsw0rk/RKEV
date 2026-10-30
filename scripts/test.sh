@@ -117,6 +117,16 @@ if [ "$skip_features" -eq 0 ] && [ ${#cargo_test_args[@]} -eq 0 ]; then
     done
 fi
 
+# The fetch path of scripts/local.sh, against a hub tree on disk: no network,
+# no build. Skipped with a named test, like the matrix.
+if [ ${#cargo_test_args[@]} -eq 0 ]; then
+    if command -v curl >/dev/null 2>&1; then
+        step "scripts/test-fetch.sh" "$CRATE_DIR/../scripts/test-fetch.sh"
+    else
+        echo "==> skipping scripts/test-fetch.sh (curl not installed)"
+    fi
+fi
+
 if [ -n "$failed" ]; then
     echo ""
     echo "==> FAILED: $failed" >&2
