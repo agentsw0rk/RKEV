@@ -231,7 +231,25 @@ if [ -n "$fetch" ]; then
     fi
     checkpoint_dir="$MODEL_DIR/$(basename "${fetch%%@*}")"
     echo "==> fetching $fetch into $checkpoint_dir"
+    # A present file counts as fetched, so a directory holds one revision only:
+    # REVISION says which. One fetched before it was written was main's, since
+    # nothing else could be fetched then. --force downloads every file again,
+    # so it may switch.
+    revision="main"
+    [[ "$fetch" == *@* ]] && revision="${fetch#*@}"
+    held=""
+    if [ -f "$checkpoint_dir/REVISION" ]; then
+        held="$(cat "$checkpoint_dir/REVISION")"
+    elif [ -n "$(ls -A "$checkpoint_dir" 2>/dev/null)" ]; then
+        held="main"
+    fi
+    if [ -n "$held" ] && [ "$held" != "$revision" ] && [ "$force" -eq 0 ]; then
+        echo "error: $checkpoint_dir holds revision $held, not $revision;" >&2
+        echo "       pass --force to replace it, or --dir for another directory" >&2
+        exit 1
+    fi
     mkdir -p "$checkpoint_dir"
+    printf '%s\n' "$revision" > "$checkpoint_dir/REVISION"
     for file in adapter_config.json adapter_model.safetensors head.pt; do
         get "$fetch" "$file" "$checkpoint_dir" || exit 1
     done

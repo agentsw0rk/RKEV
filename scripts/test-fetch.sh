@@ -81,6 +81,48 @@ else
     fail "the checkpoint is v1.0's, not main's" "$(ls "$work/tagged" 2>&1)"
 fi
 
+if [ "$(cat "$work/tagged/kev-test/REVISION" 2>/dev/null)" = "v1.0" ]; then
+    ok "the directory records which revision it holds"
+else
+    fail "the directory records which revision it holds"
+fi
+
+echo "==> another revision into the same directory"
+# A present file counts as fetched, so this would mix main's files into v1.0's.
+if fetch "$work/tagged" jaredpalmer/kev-test; then
+    fail "is refused rather than mixed" "$(tail -3 "$work/out")"
+else
+    ok "is refused rather than mixed"
+fi
+if grep -q "v1.0" "$work/out" && grep -q "main" "$work/out"; then
+    ok "the refusal names both revisions"
+else
+    fail "the refusal names both revisions" "$(tail -3 "$work/out")"
+fi
+if fetch "$work/tagged" jaredpalmer/kev-test@v1.0; then
+    ok "the same revision again is fine"
+else
+    fail "the same revision again is fine" "$(tail -3 "$work/out")"
+fi
+
+echo "==> a directory fetched before REVISION existed"
+rm -f "$work/plain/kev-test/REVISION"
+if fetch "$work/plain" jaredpalmer/kev-test@v1.0; then
+    fail "counts as main's, so v1.0 is refused"
+else
+    ok "counts as main's, so v1.0 is refused"
+fi
+
+echo "==> --force"
+if KEV_HF="file://$work/hub" "$ROOT/scripts/local.sh" --fetch-only --force \
+    --dir "$work/plain" --fetch jaredpalmer/kev-test@v1.0 > "$work/out" 2>&1 \
+   && [ "$(cat "$work/plain/kev-test/head.pt")" = "head at v1.0" ] \
+   && [ "$(cat "$work/plain/kev-test/REVISION")" = "v1.0" ]; then
+    ok "switches the directory to the new revision"
+else
+    fail "switches the directory to the new revision" "$(tail -3 "$work/out")"
+fi
+
 echo ""
 if [ "$failed" -gt 0 ]; then
     echo "==> FAILED: $failed of $((passed + failed))" >&2
