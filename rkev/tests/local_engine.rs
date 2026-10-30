@@ -585,6 +585,40 @@ fn one_round_of_permuting_moves_nothing() {
     }
 }
 
+/// `truncation_marks` in kev.serve: the permute envelope is built from several
+/// answers on one state, and carries a cutting engine's marks from any of them.
+#[test]
+fn permuting_a_cut_state_says_so_too() {
+    let permute = |truncate: bool| {
+        let (stub, _, _) = Stub::new(vec![vec![0.5, 0.3, 0.2]; 2]);
+        LocalEngine::new(stub, identity_head())
+            .with_limits(Limits {
+                max_state: 8,
+                max_branch: 64,
+            })
+            .with_truncated_states(truncate)
+            .permute_blocking(
+                &SystemOneRequest::new("a state far longer than eight tokens").ask(
+                    "team",
+                    Choice::new("?")
+                        .option_bare("a")
+                        .option_bare("b")
+                        .option_bare("c"),
+                ),
+                "team",
+                2,
+                0,
+            )
+    };
+
+    let cut = permute(true).unwrap();
+    assert_eq!(cut["truncated"], true);
+    assert_eq!(cut["usage"]["state_tokens"], 37);
+    assert_eq!(cut["usage"]["state_tokens_used"], 8);
+
+    assert!(permute(false).unwrap_err().is_validation());
+}
+
 #[test]
 fn permuting_is_the_same_twice_from_the_same_seed() {
     let orders = |seed: u64| {

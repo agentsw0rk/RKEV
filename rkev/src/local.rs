@@ -454,6 +454,7 @@ impl LocalEngine {
         let names: Vec<String> = choice.criteria.keys().cloned().collect();
 
         let mut runs = Vec::new();
+        let mut last = None;
         for round in 0..rounds.clamp(1, 64) {
             let order = if round == 0 {
                 names.clone()
@@ -484,6 +485,7 @@ impl LocalEngine {
                 "choice": answer.as_choice(),
                 "latency_ms": response.latency_ms,
             }));
+            last = Some(response);
         }
 
         // How far each option's probability travelled across the orders, and
@@ -505,11 +507,26 @@ impl LocalEngine {
             .filter_map(|run| run["choice"].as_str())
             .collect();
 
-        Ok(serde_json::json!({
+        let mut envelope = serde_json::json!({
             "runs": runs,
             "argmax_stable": winners.len() == 1,
             "spread": spread,
-        }))
+        });
+        // truncation_marks in kev.serve: every run read the same state, so
+        // any one of them says how much of it.
+        if let Some(SystemOneResponse {
+            truncated: Some(truncated),
+            usage,
+            ..
+        }) = last
+        {
+            envelope["truncated"] = serde_json::json!(truncated);
+            envelope["usage"] = serde_json::json!({
+                "state_tokens": usage.state_tokens,
+                "state_tokens_used": usage.state_tokens_used,
+            });
+        }
+        Ok(envelope)
     }
 
     /// Answer a request with one forward pass per question.
