@@ -408,6 +408,30 @@ fn a_caller_can_ask_for_long_states_to_be_cut_and_is_told() {
     assert_eq!(log.passes[0].branch(0).len(), 8, "<state> and the first 7");
 }
 
+/// An engine that may cut says so on every response, including the ones where
+/// it did not; one that may not says nothing, so the body stays the one the
+/// TypeSafe clients have always parsed.
+#[test]
+fn only_an_engine_that_may_cut_reports_whether_it_did() {
+    let ask = |truncate: bool| {
+        let (stub, _, _) = Stub::new(vec![vec![0.5, 0.5]]);
+        LocalEngine::new(stub, identity_head())
+            .with_truncated_states(truncate)
+            .system_one_blocking(&SystemOneRequest::new("short").ask("q", Noul::new("?")))
+            .unwrap()
+    };
+
+    let may_cut = ask(true);
+    assert_eq!(may_cut.truncated, Some(false));
+    assert_eq!(may_cut.usage.state_tokens, Some(6));
+    assert_eq!(may_cut.usage.state_tokens_used, Some(6));
+
+    let may_not = ask(false);
+    assert_eq!(may_not.truncated, None);
+    assert_eq!(may_not.usage.state_tokens, None);
+    assert_eq!(may_not.usage.state_tokens_used, None);
+}
+
 /// `test_serve_admits_a_state_exactly_at_the_limit` upstream: the limit counts
 /// `<state>`, and a state that fills it exactly is read whole.
 #[test]
