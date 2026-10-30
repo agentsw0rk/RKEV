@@ -74,13 +74,14 @@ async fn run(options: Options) -> Result<(), Box<dyn std::error::Error>> {
         None => option_isolation(&head_path)?,
     };
     let mut engine = LocalEngine::new(backend, pointer_head(&head_path)?).with_model(name.clone());
+    engine = engine.with_truncated_states(options.truncate_states);
     if let Some(isolation) = isolation {
         engine = engine.with_option_isolation(isolation);
     }
 
     let listener = TcpListener::bind(&options.listen).await?;
     eprintln!(
-        "{name} loaded in {:.1}s, answering on http://{}/v1/systemone{}{}",
+        "{name} loaded in {:.1}s, answering on http://{}/v1/systemone{}{}; long states {}",
         loading.elapsed().as_secs_f64(),
         listener.local_addr()?,
         match options.max_concurrent {
@@ -91,6 +92,11 @@ async fn run(options: Options) -> Result<(), Box<dyn std::error::Error>> {
             ", API key required"
         } else {
             ""
+        },
+        if options.truncate_states {
+            "cut to fit (--truncate-states)"
+        } else {
+            "refused with 413"
         },
     );
 
@@ -114,6 +120,7 @@ struct Options {
     listen: String,
     api_key: Option<String>,
     max_concurrent: Option<usize>,
+    truncate_states: bool,
     isolation: Option<bool>,
 }
 
@@ -137,7 +144,11 @@ the server
                          RKEV_API_KEY environment variable, else none)
   --max-concurrent <n>   answer n requests at a time, refuse the rest with 503
                          rather than let them wait past a client's timeout
-                         (default 4; 0 for no limit)";
+                         (default 4; 0 for no limit)
+  --truncate-states      read the first tokens of a state over the limit
+                         instead of refusing it with 413; every response then
+                         says whether it did (default: RKEV_TRUNCATE_STATES=1,
+                         else refuse)";
 
 fn parse() -> Result<Options, String> {
     let mut options = Options {
@@ -152,6 +163,7 @@ fn parse() -> Result<Options, String> {
             .ok()
             .filter(|key| !key.is_empty()),
         max_concurrent: Some(4),
+        truncate_states: std::env::var("RKEV_TRUNCATE_STATES").as_deref() == Ok("1"),
         isolation: None,
     };
     let mut base = None;
@@ -185,6 +197,7 @@ fn parse() -> Result<Options, String> {
                     .map_err(|e| format!("--max-concurrent: {e}"))?;
                 options.max_concurrent = (n > 0).then_some(n);
             }
+            "--truncate-states" => options.truncate_states = true,
             "--option-isolation" => options.isolation = Some(true),
             "--no-option-isolation" => options.isolation = Some(false),
             "-h" | "--help" => return Err(String::from("serve")),

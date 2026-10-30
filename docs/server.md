@@ -32,6 +32,7 @@ den Server, ein `SIGTERM` (etwa von `docker stop`) ebenso.
 | `--api-key <key>` | `RKEV_API_KEY`, sonst keiner | verlangt `Authorization: Bearer <key>` |
 | `--max-concurrent <n>` | `4` | mehr gleichzeitige Anfragen bekommen sofort 503; `0` = unbegrenzt |
 | `--model <name>` | Verzeichnisname des Checkpoints | der Name, den eine Anfrage neben `kev-latest` nennen darf |
+| `--truncate-states` | `RKEV_TRUNCATE_STATES=1`, sonst aus | einen zu langen State auf seinen Anfang kürzen statt mit 413 abzulehnen; jede Antwort trägt dann `truncated` und `usage.state_tokens` / `state_tokens_used` (bei Kev `KEV_TRUNCATE_STATES=1`) |
 
 Alles, was das Skript nicht kennt, reicht es an `serve` weiter (`--dtype`,
 `--option-isolation`, …; `serve --help` listet sie). Ohne das Skript:
