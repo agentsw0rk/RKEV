@@ -383,6 +383,25 @@ fn a_state_longer_than_the_context_is_refused_rather_than_truncated() {
     assert_eq!(passes.load(Ordering::SeqCst), 0, "refused before any pass");
 }
 
+/// `test_serve_admits_a_state_exactly_at_the_limit` upstream: the limit counts
+/// `<state>`, and a state that fills it exactly is read whole.
+#[test]
+fn a_state_exactly_at_the_limit_is_read_whole() {
+    let (stub, log, _) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head()).with_limits(Limits {
+        max_state: 8,
+        max_branch: 64,
+    });
+
+    // Seven bytes, so seven stub tokens and eight with <state>.
+    let response =
+        engine.system_one_blocking(&SystemOneRequest::new("seven b").ask("q", Noul::new("?")));
+
+    assert!(response.is_ok(), "{:?}", response.unwrap_err());
+    let log = log.lock().unwrap();
+    assert_eq!(log.passes[0].branch(0).len(), 8, "<state> and all 7 tokens");
+}
+
 #[test]
 fn clones_share_one_backend_rather_than_loading_the_model_twice() {
     let (engine, _, passes) = engine(vec![vec![0.5, 0.5], vec![0.5, 0.5]]);
