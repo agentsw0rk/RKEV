@@ -14,6 +14,7 @@
 #
 #   --base <dir>      the base model, if it is not beside the checkpoint
 #   --dir <dir>       where --fetch puts models (default ~/models)
+#   --fetch-only      stop after --fetch: no build, no checks
 #   --force           re-download files (also the fix for an interrupted one)
 #   --release         build the suite optimised too (sanity always is)
 #   --records <file>  labelled records, JSONL; needs --questions or --request
@@ -52,6 +53,7 @@ device=""
 quantise=""
 checkpoint=""
 fetch=""
+fetch_only=0
 measure=0
 skip_suite=0
 force=0
@@ -62,6 +64,7 @@ while [ $# -gt 0 ]; do
         --checkpoint) checkpoint="${2:-}"; shift 2 ;;
         --base)       base="${2:-}"; shift 2 ;;
         --fetch)      fetch="${2:-}"; shift 2 ;;
+        --fetch-only) fetch_only=1; shift ;;
         --dir)        MODEL_DIR="${2:-}"; shift 2 ;;
         --records)    records="${2:-}"; shift 2 ;;
         --min-accuracy) minimum+=(--min-accuracy "${2:-}"); shift 2 ;;
@@ -73,7 +76,7 @@ while [ $# -gt 0 ]; do
         --skip-suite) skip_suite=1; shift ;;
         --force)      force=1; shift ;;
         --release)    release="--release"; shift ;;
-        -h|--help)    sed -n '3,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)    sed -n '3,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)            echo "error: unknown argument $1 (try --help)" >&2; exit 1 ;;
     esac
 done
@@ -253,6 +256,10 @@ if [ -n "$fetch" ]; then
     done
     get "$repo" generation_config.json "$base" optional || exit 1
     get_weights "$repo" "$base" || exit 1
+    if [ "$fetch_only" -eq 1 ]; then
+        echo "==> fetched $checkpoint and $base"
+        exit 0
+    fi
 fi
 
 # ---------------------------------------------------------------------------
