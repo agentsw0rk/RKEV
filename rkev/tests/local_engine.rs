@@ -432,6 +432,31 @@ fn only_an_engine_that_may_cut_reports_whether_it_did() {
     assert_eq!(may_not.usage.state_tokens_used, None);
 }
 
+/// `/v1/systemone/separate` runs a pass per question on one state, and says how
+/// much of that state it read, as `truncation_marks` does upstream.
+#[test]
+fn asking_questions_separately_reports_a_cut_state_too() {
+    let (stub, _, _) = Stub::new(vec![vec![0.5, 0.5]; 2]);
+    let engine = LocalEngine::new(stub, identity_head())
+        .with_limits(Limits {
+            max_state: 8,
+            max_branch: 64,
+        })
+        .with_truncated_states(true);
+
+    let response = engine
+        .system_one_separate_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens")
+                .ask("a", Noul::new("?"))
+                .ask("b", Noul::new("!")),
+        )
+        .unwrap();
+
+    assert_eq!(response.truncated, Some(true));
+    assert_eq!(response.usage.state_tokens, Some(37));
+    assert_eq!(response.usage.state_tokens_used, Some(8));
+}
+
 /// `test_serve_admits_a_state_exactly_at_the_limit` upstream: the limit counts
 /// `<state>`, and a state that fills it exactly is read whole.
 #[test]
