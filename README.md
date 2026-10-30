@@ -10,7 +10,7 @@ Dabei werden keine Antwort-Tokens generiert. Die Entscheidung erfolgt über eine
 
 RKev unterstützt Qwen3 ebenso wie das hybride Qwen3.5 mit Gated DeltaNet. Dazu kommen ein CLI für direkte Anfragen, ein HTTP-Server, gegen den aus dem Agent Modeler exportierte Agents ohne Code-Änderung laufen, und ein Eval-Runner, mit dem sich eigene gelabelte Tickets auswerten lassen — mit Trefferquote pro Sicherheitsband, aus dem eine Schwelle fürs automatische Routing folgt.
 
-## Was RKev macht
+## Was RKev macht.
 
 Die Fragen teilen sich den State, können einander aber nicht lesen. Drei Typen:
 
