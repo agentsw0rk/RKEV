@@ -162,10 +162,13 @@ auth=()
 [ -n "${HF_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $HF_TOKEN")
 
 # One file off the hub. -C - resumes a half-downloaded shard, and --fail turns a
-# 404 into an exit code instead of writing the error page into the file.
+# 404 into an exit code instead of writing the error page into the file. The
+# repo may carry a revision, kev's repo@v1.0; without one it is main.
 fetch_one() {
+    local repo="${1%%@*}" revision="main"
+    [[ "$1" == *@* ]] && revision="${1#*@}"
     curl -fL --retry 3 --retry-delay 2 -C - --progress-bar \
-        ${auth[@]+"${auth[@]}"} -o "$3" "$HF/$1/resolve/main/$2"
+        ${auth[@]+"${auth[@]}"} -o "$3" "$HF/$repo/resolve/$revision/$2"
 }
 
 # get <repo> <file> <into> [optional]
@@ -226,7 +229,7 @@ if [ -n "$fetch" ]; then
         echo "error: --fetch needs curl" >&2
         exit 1
     fi
-    checkpoint_dir="$MODEL_DIR/$(basename "$fetch")"
+    checkpoint_dir="$MODEL_DIR/$(basename "${fetch%%@*}")"
     echo "==> fetching $fetch into $checkpoint_dir"
     mkdir -p "$checkpoint_dir"
     for file in adapter_config.json adapter_model.safetensors head.pt; do

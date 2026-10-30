@@ -69,6 +69,18 @@ else
     ok "nothing is built or run after the fetch"
 fi
 
+echo "==> a revision: repo@v1.0"
+if fetch "$work/tagged" jaredpalmer/kev-test@v1.0; then
+    ok "fetches a tagged revision"
+else
+    fail "fetches a tagged revision" "$(tail -3 "$work/out")"
+fi
+if [ "$(cat "$work/tagged/kev-test/head.pt" 2>/dev/null)" = "head at v1.0" ]; then
+    ok "the checkpoint is v1.0's, not main's"
+else
+    fail "the checkpoint is v1.0's, not main's" "$(ls "$work/tagged" 2>&1)"
+fi
+
 echo ""
 if [ "$failed" -gt 0 ]; then
     echo "==> FAILED: $failed of $((passed + failed))" >&2
