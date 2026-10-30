@@ -71,6 +71,12 @@ dazu `usage.state_tokens` (der ganze State) und `usage.state_tokens_used` (was
 das Modell gelesen hat). Trainiert wurde auf 384 State-Tokens und 1024 für
 State plus einen Zweig.
 
+Kev 1.0 nimmt States bis 65.536 Tokens an, rkev bleibt bei 8.192. Das ist
+Absicht: Für die Checkpoints, die rkev laden kann (0.8B, 4B, 9B), ist laut ihren
+Modellkarten nur ein Kontext von 8.192 Tokens validiert, und bei 64k bräuchte
+schon der KV-Cache auf der CPU zweistellige Gigabytes. Messung und Begründung
+stehen in `docs/leistung.md` (*Lange States*).
+
 ## 3. Tokens → Hidden States (`src/backend.rs`, `src/qwen3.rs`, `src/qwen3_5.rs`)
 
 Hier fängt Qwen an. `Backend` setzt drei Dinge zusammen:
