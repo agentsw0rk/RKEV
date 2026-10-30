@@ -175,6 +175,17 @@ fn round_prob(x: f64) -> f64 {
     (x * 10_000.0).round() / 10_000.0
 }
 
+/// `p` scaled to sum to 1, and all zeros read as uniform: `_normalize` in
+/// `kev/api.py`, which both confidence formulas apply first, as TypeSafe's
+/// adapter does. A softmax barely changes; anything else is read by its shape.
+fn normalise(p: &[f64]) -> Vec<f64> {
+    let total: f64 = p.iter().sum();
+    if total == 0.0 {
+        return vec![1.0 / p.len() as f64; p.len()];
+    }
+    p.iter().map(|p| p / total).collect()
+}
+
 /// `(p_max - 1/K) / (1 - 1/K)`: how far the winner is above a uniform guess.
 /// A single option is certain by construction.
 fn choice_confidence(p: &[f64]) -> f64 {
@@ -182,7 +193,7 @@ fn choice_confidence(p: &[f64]) -> f64 {
     if p.len() == 1 {
         return 1.0;
     }
-    let max = p.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let max = normalise(p).into_iter().fold(f64::NEG_INFINITY, f64::max);
     (max - 1.0 / k) / (1.0 - 1.0 / k)
 }
 
@@ -196,6 +207,7 @@ fn score_confidence(p: &[f64]) -> f64 {
     if p.len() == 1 {
         return 1.0;
     }
+    let p = &normalise(p);
     let mode = argmax(p) as f64;
     let spread: f64 = p
         .iter()
@@ -388,4 +400,22 @@ fn push_string(out: &mut String, value: &str) {
         }
     }
     out.push('"');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `test_confidence_edge_cases`, the cases a softmax cannot produce: both
+    /// formulas normalise first, as TypeSafe's adapter does, and read all
+    /// zeros as uniform.
+    #[test]
+    fn confidence_reads_an_unnormalised_distribution_as_its_normalised_one() {
+        assert_eq!(
+            score_confidence(&[2.0, 6.0, 0.0]),
+            score_confidence(&[0.25, 0.75, 0.0])
+        );
+        assert_eq!(choice_confidence(&[0.0, 0.0]), 0.0);
+        assert_eq!(score_confidence(&[0.0, 0.0, 0.0]), 0.0);
+    }
 }
