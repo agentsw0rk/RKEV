@@ -117,6 +117,34 @@ f32-Pfad auf der CPU ist der exakte: dort stimmen gepackter und getrennter Pass 
 0.00000 überein. Quantisiert und auf Metal weichen sie um 0.003 ab — Assoziativität
 der Fließkommaaddition, nicht ein Fehler im Layout.
 
+## Lange States: Speicher statt Zeit
+
+Bei langen States geht zuerst der Speicher aus, nicht die Zeit. Die Attention
+rechnet Scores und Softmax als `[Köpfe, Zeilen, Keys]`. Ein State, der in einem
+Stück vorgefüllt wird, kostet damit `L x L` pro Kopf. Deshalb rechnet
+`grouped_attention` höchstens 512 Query-Zeilen auf einmal. Das ist exakt, denn
+jede Zeile bekommt weiter ihren Softmax über alle Keys.
+
+Gemessen mit `what_a_long_state_costs_one_attention_layer` (`#[ignore]`d in
+`rkev/src/weights.rs`, `cargo test --release --features candle --lib --
+--ignored --nocapture`): Spitzenspeicher **einer** Attention-Schicht mit den
+Formen von kev-0.6b, in f32, Linux-Container:
+
+| State | in einem Stück | in Stücken von 512 |
+|---|---|---|
+| 512 | 60 MB | 61 MB |
+| 1.024 | 188 MB | 117 MB |
+| 2.048 | 641 MB | 225 MB |
+| 4.096 | 2.386 MB | 460 MB |
+| 8.192 | nicht gemessen (hochgerechnet ~9,5 GB) | 1.030 MB |
+
+Quadratisch wächst nur noch die dichte Maske, bei 8.192 Tokens sind das
+268 MB. Das Limit bleibt bei 8.192 Tokens, statt der 65.536 von Kev 1.0. Für
+die Checkpoints, die rkev laden kann, ist laut ihren Modellkarten nur dieser
+Kontext validiert, und bei 64k bräuchte schon der KV-Cache von kev-0.6b in f32
+~15 GB (gerechnet). Die Begründung steht in
+`docs/features/03-kontextlimit-65k.md`.
+
 ## Alles auf einmal messen
 
 `scripts/sweep.sh` fährt einen Checkpoint durch jeden Pfad, den er hat, und legt

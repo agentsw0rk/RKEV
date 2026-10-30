@@ -499,6 +499,54 @@ pub(crate) fn grouped_attention(
     mask: &Tensor,
     scale: f64,
 ) -> Result<Tensor> {
+    chunked_attention(q, k, v, past, mask, scale, QUERY_CHUNK)
+}
+
+/// Query rows scored at once. The scores and their softmax are `[heads, rows,
+/// keys]`, so a state prefilled in one go costs `len x len` per head: 2.4 GB in
+/// one layer at 4096 tokens and kev-0.6b's shapes, four times that per doubling
+/// (`what_a_long_state_costs_one_attention_layer`). In chunks it is `512 x len`.
+const QUERY_CHUNK: usize = 512;
+
+/// [`grouped_attention`], `chunk` query rows at a time. Exact: every row still
+/// takes its softmax over all of its keys, and rows do not read each other's
+/// scores.
+fn chunked_attention(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    past: Option<(&Tensor, &Tensor)>,
+    mask: &Tensor,
+    scale: f64,
+    chunk: usize,
+) -> Result<Tensor> {
+    let rows = q.dim(2)?;
+    if rows <= chunk {
+        return attend(q, k, v, past, mask, scale);
+    }
+    let mut parts = Vec::with_capacity(rows.div_ceil(chunk));
+    for start in (0..rows).step_by(chunk) {
+        let take = chunk.min(rows - start);
+        parts.push(attend(
+            &q.narrow(2, start, take)?,
+            k,
+            v,
+            past,
+            &mask.narrow(2, start, take)?,
+            scale,
+        )?);
+    }
+    Ok(Tensor::cat(&parts, 2)?)
+}
+
+fn attend(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    past: Option<(&Tensor, &Tensor)>,
+    mask: &Tensor,
+    scale: f64,
+) -> Result<Tensor> {
     let (batch, heads, rows, dim) = q.dims4()?;
     let (kv_heads, len) = (k.dim(1)?, k.dim(2)?);
     let group = heads / kv_heads;
@@ -915,6 +963,35 @@ mod tests {
         assert!(difference < 1e-5, "differs by {difference}");
     }
 
+    #[test]
+    fn attending_in_query_chunks_is_the_same_attention() {
+        // 37 rows in chunks of 8, so the last chunk is short; three rows of a
+        // padded batch over a state, and one causal prefill with no state.
+        let case = Case::new(3, 8, 2, 37, 7, 4);
+        let keys = state_keys(&case.keys).unwrap();
+        let past = Some((&keys, &case.values));
+        let whole = chunked_attention(
+            &case.q,
+            &case.k,
+            &case.v,
+            past,
+            &case.mask,
+            0.125,
+            usize::MAX,
+        )
+        .unwrap();
+        let chunked =
+            chunked_attention(&case.q, &case.k, &case.v, past, &case.mask, 0.125, 8).unwrap();
+        assert!(largest_difference(&whole, &chunked) < 1e-6);
+
+        let causal = attention_mask(37, |q, k| k <= q, &Device::Cpu, DType::F32).unwrap();
+        let first = |x: &Tensor| x.narrow(0, 0, 1).unwrap();
+        let (q, k, v) = (first(&case.q), first(&case.k), first(&case.v));
+        let whole = chunked_attention(&q, &k, &v, None, &causal, 0.125, usize::MAX).unwrap();
+        let chunked = chunked_attention(&q, &k, &v, None, &causal, 0.125, 8).unwrap();
+        assert!(largest_difference(&whole, &chunked) < 1e-6);
+    }
+
     /// What repeating the state's keys and values cost per layer, at kev-0.6b's
     /// shapes: sixteen query heads over eight key/value heads, 128 wide, a
     /// 571-token state and five branches of forty-five tokens.
@@ -971,7 +1048,7 @@ mod tests {
         };
         println!("one attention layer prefilling a state, kev-0.6b's shapes, f32:");
         let mut previous = before;
-        for len in [512, 1024, 2048, 4096] {
+        for len in [512, 1024, 2048, 4096, 8192] {
             let noise = |heads: usize| {
                 Tensor::randn(0f32, 1f32, (1, heads, len, 128), &Device::Cpu).unwrap()
             };

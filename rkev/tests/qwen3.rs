@@ -761,6 +761,55 @@ fn the_forward_pass_matches_a_transcription_of_modeling_qwen3() {
     }
 }
 
+/// A state longer than the 512 query rows attention scores at once, so the
+/// chunks meet inside the state: packed, and through the prefix, which a state
+/// past 384 tokens takes. The transcription scores every row at once, so a
+/// chunk that read the wrong mask rows or keys shows up here.
+#[test]
+fn a_state_scored_in_query_chunks_matches_the_transcription() {
+    let fixture = checkpoint("chunked", false, false);
+    let state = 600;
+    let mut ids: Vec<u32> = vec![1];
+    ids.extend((1..state).map(|token| 6 + (token * 7 % 9) as u32));
+    let mut segments = vec![0u32; state];
+    let mut positions: Vec<u32> = (0..state as u32).collect();
+    for (segment, branch) in [(1u32, [2u32, 12, 3, 14, 4, 5]), (2, [2, 13, 3, 11, 4, 5])] {
+        ids.extend(branch);
+        segments.extend([segment; 6]);
+        positions.extend(state as u32..state as u32 + 6);
+    }
+    let every: Vec<usize> = (0..ids.len()).collect();
+    let pass = Pass::new(&ids, &positions, &segments, &every);
+    let reference = reference_hidden(&fixture.tensors, &ids, &positions, &|query, key| {
+        pass.attends(query, key)
+    });
+    let close = |ours: &[Vec<f32>], at: &[usize], path: &str| {
+        for (row, token) in at.iter().enumerate() {
+            for (i, (ours, reference)) in ours[row].iter().zip(&reference[*token]).enumerate() {
+                assert!(
+                    (ours - reference).abs() <= 1e-5,
+                    "{path}, token {token}, hidden unit {i}: {ours} vs {reference}"
+                );
+            }
+        }
+    };
+
+    // Packed: every position, the state's past the chunk boundary included.
+    let mut packed = Backend::open(&fixture.dir, None)
+        .unwrap()
+        .with_prefix(false);
+    let ours = packed.hidden(&pass).unwrap();
+    close(&ours, &every, "packed");
+
+    // Through the prefix: the branches, which read the chunked state's keys.
+    let branches: Vec<usize> = (state..ids.len()).collect();
+    let mut prefixed = Backend::open(&fixture.dir, None).unwrap();
+    let ours = prefixed
+        .hidden(&Pass::new(&ids, &positions, &segments, &branches))
+        .unwrap();
+    close(&ours, &branches, "prefix");
+}
+
 // ---------------------------------------------------------------------------
 // The tokenizer
 // ---------------------------------------------------------------------------
