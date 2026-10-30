@@ -123,6 +123,21 @@ else
     fail "switches the directory to the new revision" "$(tail -3 "$work/out")"
 fi
 
+echo "==> a base named with a revision"
+put jaredpalmer/kev-pinned main adapter_config.json \
+    '{"base_model_name_or_path": "Qwen/Pinned-Base@r1", "r": 16}'
+put jaredpalmer/kev-pinned main adapter_model.safetensors "adapter"
+put jaredpalmer/kev-pinned main head.pt "head"
+put Qwen/Pinned-Base r1 config.json '{}'
+put Qwen/Pinned-Base r1 tokenizer.json '{}'
+put Qwen/Pinned-Base r1 model.safetensors "base weights at r1"
+if fetch "$work/pinned" jaredpalmer/kev-pinned \
+   && [ "$(cat "$work/pinned/qwen-pinned-base/model.safetensors" 2>/dev/null)" = "base weights at r1" ]; then
+    ok "fetches the base at that revision, into a directory without it"
+else
+    fail "fetches the base at that revision, into a directory without it" "$(tail -3 "$work/out")"
+fi
+
 echo ""
 if [ "$failed" -gt 0 ]; then
     echo "==> FAILED: $failed of $((passed + failed))" >&2

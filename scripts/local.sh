@@ -261,14 +261,15 @@ if [ -n "$fetch" ]; then
     # Which base it adapts is in adapter_config.json; fetch that too.
     repo="$(sed -n 's/.*"base_model_name_or_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
             "$checkpoint_dir/adapter_config.json" | head -1)"
-    # A checkpoint may name a base with a revision suffix (kev's @qwen3 style).
-    repo="${repo%%@*}"
+    # A checkpoint may name a base with a revision suffix (kev's @qwen3 style):
+    # fetched at that revision, into a directory named without it - the same
+    # name the base is looked for under below.
     if [ -z "$repo" ]; then
         echo "error: $checkpoint_dir/adapter_config.json names no base model" >&2
         exit 1
     fi
     if [ -z "$base" ]; then
-        base="$MODEL_DIR/$(echo "$repo" | tr 'A-Z/' 'a-z-')"
+        base="$MODEL_DIR/$(echo "${repo%%@*}" | tr 'A-Z/' 'a-z-')"
     fi
     echo "==> fetching base $repo into $base"
     mkdir -p "$base"
