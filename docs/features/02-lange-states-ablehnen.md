@@ -1,6 +1,6 @@
 # 02 — Zu lange States ablehnen statt still kürzen
 
-**Status:** offen
+**Status:** umgesetzt auf `feature/refuse-long-states` (2026-10-30), noch nicht gemergt
 **Upstream:** [`2ea5660`](https://github.com/jaredpalmer/kev/commit/2ea5660) (2026-09-30),
 `kev/model.py` (`ContextOverflow`, `encode`, `admit`) und `kev/serve.py`
 (`Server.submit`, `_body`, `truncation_marks`, `/v1/models`)
@@ -79,3 +79,31 @@ Doku:
 - mit Schalter jede Antwort `truncated` trägt,
 - der Body ohne Schalter Byte für Byte gleich bleibt (`tests/wire_format.rs`),
 - die 413/422-Entscheidung getroffen und dokumentiert ist.
+
+## Ergebnis
+
+- **Ablehnen:** Ein State über `max_state` ist `Error::ContextOverflow` mit
+  Upstreams Meldung (`state is N tokens, over the M-token limit (the <state>
+  token included): …`). Das gilt auf jedem Pfad, weil alle über `encode`
+  laufen: gepackt, getrennt, Batch, Permute. Die Grenze (genau `max_state`) ist
+  getestet, ebenso ein absichtlicher Off-by-one.
+- **413 bleibt**, wie im API-Dokument. Die Abweichung zu `kev.serve` (422) steht
+  in `docs/server.md` und `rkev/README.md`.
+- **Opt-in:** `LocalEngine::with_truncated_states(true)` bzw.
+  `serve --truncate-states` / `RKEV_TRUNCATE_STATES=1`. Dann tragen alle
+  Antworten `truncated` und `usage.state_tokens` / `state_tokens_used`,
+  auch `/separate` und der `permute`-Umschlag.
+- **Wire-Format:** Ohne Opt-in bleibt der Body unverändert. Das hält
+  `a_response_serialises_back_into_the_readme_shape` fest. Der Body eines
+  kürzenden `kev.serve` übersteht einen Roundtrip.
+- **API-Änderung:** `SystemOneResponse` hat das neue Feld `truncated`. Code,
+  der die Struktur als Literal baut, muss es ergänzen. `Usage` hat zwei neue
+  `Option`-Felder, `Usage::default()` deckt sie ab.
+- **Nicht umgesetzt: `/v1/models`.** Upstream liefert dort eine Modellkarte mit
+  `max_state_tokens` und `truncate_states`, wir nur `{"models": [...]}`, so
+  wie es das API-Dokument verlangt. Der Server ist generisch über den
+  `SystemOne`-Seam und kennt die Limits der Engine nicht. Dafür müsste der Seam
+  sie preisgeben, oder der Server bekäme sie doppelt konfiguriert. Erst
+  angehen, wenn ein Client die Felder braucht.
+- Die Invariante steht in `CLAUDE.md`. Die Datei ist in `.gitignore`, die
+  Änderung ist also nur lokal.
