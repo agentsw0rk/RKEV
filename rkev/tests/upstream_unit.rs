@@ -189,9 +189,12 @@ fn the_confidence_edge_cases_are_the_python_ones() {
     // All on one option, and all on one level.
     assert!((ask(vec![0.9999, 0.00005, 0.00005], 3, false) - 1.0).abs() < 1e-3);
     assert_eq!(ask(vec![0.000002, 0.999996, 0.000002], 3, true), 1.0);
-    // Split across the ends of a scale: somewhere in range, and not certain.
-    let split = ask(vec![0.5, 0.00002, 0.49998], 3, true);
-    assert!((0.0..=1.0).contains(&split), "{split}");
+    // A uniform score is no confidence, at every length.
+    for levels in 2..=10 {
+        assert_eq!(ask(vec![1.0 / levels as f64; levels], levels, true), 0.0);
+    }
+    // Split across the ends of a scale is more spread than uniform: clipped at 0.
+    assert_eq!(ask(vec![0.5, 0.000002, 0.499998], 3, true), 0.0);
 }
 
 /// `test_branch_mask_rule`, with the same segments and the same indices.
