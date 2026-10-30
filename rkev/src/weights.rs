@@ -947,4 +947,46 @@ mod tests {
             repeated / grouped
         );
     }
+
+    /// The process's peak resident memory so far, in bytes (Linux only).
+    fn peak_resident() -> Option<u64> {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let line = status.lines().find(|line| line.starts_with("VmHWM:"))?;
+        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+        Some(kb * 1024)
+    }
+
+    /// What prefilling a state of `len` tokens costs in memory in one attention
+    /// layer, at kev-0.6b's shapes (sixteen query heads over eight key/value
+    /// heads, 128 wide): the `len x len` mask, then the scores and their softmax
+    /// for every query row at once. This is what decides how long a state the
+    /// engine can take (`docs/features/03-kontextlimit-65k.md`). Lengths run
+    /// upward because the peak only ever grows; run it alone, in release.
+    #[test]
+    #[ignore = "a measurement, not an assertion: cargo test --release -- --ignored --nocapture"]
+    fn what_a_long_state_costs_one_attention_layer() {
+        let Some(before) = peak_resident() else {
+            println!("no /proc/self/status here: nothing to measure");
+            return;
+        };
+        println!("one attention layer prefilling a state, kev-0.6b's shapes, f32:");
+        let mut previous = before;
+        for len in [512, 1024, 2048, 4096] {
+            let noise = |heads: usize| {
+                Tensor::randn(0f32, 1f32, (1, heads, len, 128), &Device::Cpu).unwrap()
+            };
+            let (q, k, v) = (noise(16), noise(8), noise(8));
+            let mask = attention_mask(len, |q, k| k <= q, &Device::Cpu, DType::F32).unwrap();
+            let attended = grouped_attention(&q, &k, &v, None, &mask, 0.088).unwrap();
+            drop((attended, mask, q, k, v));
+            let peak = peak_resident().unwrap();
+            println!(
+                "  {len:>5} tokens: peak {:>7.0} MB above the start ({:>6.0} MB more than the \
+                 last length)",
+                (peak - before) as f64 / 1e6,
+                (peak - previous) as f64 / 1e6
+            );
+            previous = peak;
+        }
+    }
 }
