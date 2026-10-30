@@ -1,6 +1,6 @@
 # 01 — Score-Konfidenz nach Upstream
 
-**Status:** offen
+**Status:** umgesetzt auf `feature/score-confidence` (2026-10-30), noch nicht gemergt
 **Upstream:** [`134d170`](https://github.com/jaredpalmer/kev/commit/134d170) (2026-09-25),
 `kev/api.py`: `score_confidence`, `choice_confidence`, `_normalize`
 
@@ -68,3 +68,19 @@ dann stimmt, wenn er einmal etwas anderes als eine Softmax bekommt.
 - die drei Upstream-Tests portiert sind und grün laufen,
 - `scripts/test.sh` mit der ganzen Feature-Matrix grün ist,
 - keine Doku mehr die alte Formel nennt.
+
+## Ergebnis
+
+- Formel, Clip und Normierung wie upstream (`rkev/src/readout.rs`).
+- Portiert: die Score-Zeile aus `test_to_answers_shapes_and_formulas`, die
+  exakten Nullen aus `test_confidence_edge_cases` und
+  `test_score_confidence_matches_typesafe_docs` in `tests/upstream_unit.rs`.
+  Die Fälle, die eine Softmax nicht erzeugen kann (nicht normiert, alles 0),
+  stehen als Unit-Test in `readout.rs`. Jeder neue Test wurde gegen die alte
+  Formel rot gesehen.
+- Das README-Beispiel von Kev sagt jetzt 0.34 statt 0.78. Fixtures und
+  `rkev/README.md` folgen ihm. Der gemessene Lauf im Root-`README.md` trägt
+  einen Vermerk, weil er neu gemessen werden müsste.
+- `examples/parity` vergleicht keine Konfidenz, und es gibt keine Aufnahmen.
+  Hier war also nichts zu tun. Hätte parity sie verglichen, wäre diese
+  Abweichung dort aufgefallen.

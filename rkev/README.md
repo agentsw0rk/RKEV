@@ -210,7 +210,7 @@ department     shipping     0.47   confidence 0.21
                returns      0.28
                billing      0.25
 escalate       yes          0.93
-frustration    Frustrated   level 1.44   confidence 0.78
+frustration    Frustrated   level 1.44   confidence 0.34
 ```
 
 The numbers there are the ones the Kev README publishes for Kev-4B, not a run of

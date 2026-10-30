@@ -118,6 +118,8 @@ fn answers_have_the_shapes_and_formulas_the_python_gives() {
     assert_eq!(score.as_score(), Some(1.5));
     assert_eq!(score.probabilities().unwrap()["2"], 0.6);
     assert_eq!(score.legend().unwrap()["1"], "mid");
+    // 1 - (0.1*2 + 0.3*1) / (2/3)
+    assert_eq!(score.confidence(), Some(0.25));
 }
 
 /// `test_to_answers_choice_probabilities_sum_within_typesafe_tolerance`: four
@@ -186,10 +188,47 @@ fn the_confidence_edge_cases_are_the_python_ones() {
     assert_eq!(ask(vec![0.5, 0.5], 2, false), 0.0);
     // All on one option, and all on one level.
     assert!((ask(vec![0.9999, 0.00005, 0.00005], 3, false) - 1.0).abs() < 1e-3);
-    assert_eq!(ask(vec![0.00002, 0.99996, 0.00002], 3, true), 1.0);
-    // Split across the ends of a scale: somewhere in range, and not certain.
-    let split = ask(vec![0.5, 0.00002, 0.49998], 3, true);
-    assert!((0.0..=1.0).contains(&split), "{split}");
+    assert_eq!(ask(vec![0.000002, 0.999996, 0.000002], 3, true), 1.0);
+    // A uniform score is no confidence, at every length.
+    for levels in 2..=10 {
+        assert_eq!(ask(vec![1.0 / levels as f64; levels], levels, true), 0.0);
+    }
+    // Split across the ends of a scale is more spread than uniform: clipped at 0.
+    assert_eq!(ask(vec![0.5, 0.000002, 0.499998], 3, true), 0.0);
+}
+
+/// `test_score_confidence_matches_typesafe_docs`: the Score examples on
+/// docs.typesafe.ai/primitives/score.md. The docs print two decimals, so the
+/// probabilities behind 0.35 and 0.89 were not exactly these; equal within that
+/// display rounding.
+#[test]
+fn score_confidence_matches_the_typesafe_docs() {
+    for (targets, want) in [
+        (vec![0.0, 0.57, 0.43], 0.35),
+        (vec![0.0, 0.14, 0.86, 0.0, 0.0], 0.89),
+        (vec![0.0, 0.0, 0.48, 0.52], 0.52),
+        (vec![0.0, 0.74, 0.26], 0.61),
+        (vec![0.0, 0.0, 0.0, 1.0], 1.0),
+    ] {
+        // The stub produces softmaxes, so a zero is written as very nearly one.
+        let targets: Vec<f64> = targets.iter().map(|p| p + 1e-7).collect();
+        let mut question = Score::new("i");
+        for index in 0..targets.len() {
+            question = question.level(format!("level {index}"));
+        }
+        let (engine, _, _) = engine(vec![targets.clone()]);
+
+        let response = engine
+            .system_one_blocking(&SystemOneRequest::new("s").ask("q", question))
+            .unwrap();
+
+        let confidence = response.answer("q").unwrap().confidence().unwrap();
+        let shown = (confidence * 100.0).round() / 100.0;
+        assert!(
+            (shown - want).abs() < 0.011,
+            "{targets:?}: {confidence}, the docs say {want}"
+        );
+    }
 }
 
 /// `test_branch_mask_rule`, with the same segments and the same indices.

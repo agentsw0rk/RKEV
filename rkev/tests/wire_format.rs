@@ -119,7 +119,7 @@ const README_RESPONSE: &str = r#"{
     "department":  { "type": "choice", "choice": "returns", "confidence": 0.21,
                      "probabilities": { "returns": 0.47, "shipping": 0.28, "billing": 0.25 } },
     "escalate":    { "type": "noul", "noul": 0.93 },
-    "frustration": { "type": "score", "score": 1.44, "confidence": 0.78,
+    "frustration": { "type": "score", "score": 1.44, "confidence": 0.34,
                      "legend": { "0": "Calm", "1": "Frustrated", "2": "Very angry" },
                      "probabilities": { "0": 0.00, "1": 0.56, "2": 0.44 } }
   },
