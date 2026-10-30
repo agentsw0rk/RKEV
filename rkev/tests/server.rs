@@ -149,6 +149,7 @@ fn shipping() -> SystemOneResponse {
         answers,
         usage: Usage::default(),
         latency_ms: None,
+        truncated: None,
     }
 }
 

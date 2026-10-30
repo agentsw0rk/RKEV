@@ -383,6 +383,31 @@ fn a_state_longer_than_the_context_is_refused_rather_than_truncated() {
     assert_eq!(passes.load(Ordering::SeqCst), 0, "refused before any pass");
 }
 
+/// `KEV_TRUNCATE_STATES=1` upstream: cutting a state is something a caller asks
+/// for, and then the response says it happened and by how much.
+#[test]
+fn a_caller_can_ask_for_long_states_to_be_cut_and_is_told() {
+    let (stub, log, _) = Stub::new(vec![vec![0.5, 0.5]]);
+    let engine = LocalEngine::new(stub, identity_head())
+        .with_limits(Limits {
+            max_state: 8,
+            max_branch: 64,
+        })
+        .with_truncated_states(true);
+
+    let response = engine
+        .system_one_blocking(
+            &SystemOneRequest::new("a state far longer than eight tokens").ask("q", Noul::new("?")),
+        )
+        .unwrap();
+
+    assert_eq!(response.truncated, Some(true));
+    assert_eq!(response.usage.state_tokens, Some(37));
+    assert_eq!(response.usage.state_tokens_used, Some(8));
+    let log = log.lock().unwrap();
+    assert_eq!(log.passes[0].branch(0).len(), 8, "<state> and the first 7");
+}
+
 /// `test_serve_admits_a_state_exactly_at_the_limit` upstream: the limit counts
 /// `<state>`, and a state that fills it exactly is read whole.
 #[test]

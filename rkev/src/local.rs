@@ -280,6 +280,7 @@ pub struct LocalEngine {
     model: String,
     limits: Limits,
     isolation: bool,
+    truncate_states: bool,
 }
 
 impl LocalEngine {
@@ -291,6 +292,7 @@ impl LocalEngine {
             model: String::from(crate::DEFAULT_MODEL),
             limits: Limits::serving(),
             isolation: false,
+            truncate_states: false,
         }
     }
 
@@ -319,6 +321,16 @@ impl LocalEngine {
         self
     }
 
+    /// Read only the first `max_state` tokens of a longer state instead of
+    /// refusing it, and say so on every response: `truncated`, and
+    /// `usage.state_tokens` / `state_tokens_used`. `KEV_TRUNCATE_STATES=1` in
+    /// `kev.serve`. Off by default, because a cut state answers a question
+    /// about the start of a document as if it were about all of it.
+    pub fn with_truncated_states(mut self, truncate: bool) -> Self {
+        self.truncate_states = truncate;
+        self
+    }
+
     /// Answer a request on the calling thread.
     ///
     /// Deliberately blocking: a forward pass is CPU/GPU-bound and has no
@@ -335,7 +347,14 @@ impl LocalEngine {
         let probabilities = self.probabilities(&mut *backend, &encoding)?;
         let answers = self.answers(&probabilities, &plans)?;
 
-        self.respond(request, &mut *backend, answers, encoding.ids.len(), started)
+        self.respond(
+            request,
+            &mut *backend,
+            answers,
+            encoding.ids.len(),
+            &encoding,
+            started,
+        )
     }
 
     /// Answer several requests, prefilling their states together.
@@ -390,7 +409,14 @@ impl LocalEngine {
             .map(|(hidden, (encoding, ((_, plans), request)))| {
                 let probabilities = self.distributions(hidden, encoding)?;
                 let answers = self.answers(&probabilities, plans)?;
-                self.respond(request, &mut *backend, answers, encoding.ids.len(), started)
+                self.respond(
+                    request,
+                    &mut *backend,
+                    answers,
+                    encoding.ids.len(),
+                    encoding,
+                    started,
+                )
             })
             .collect()
     }
@@ -503,6 +529,9 @@ impl LocalEngine {
 
         let mut answers = IndexMap::with_capacity(plans.len());
         let mut input_tokens = 0;
+        // Every pass reads the same state, so any one of them says how much
+        // of it was read (`truncation_marks` in kev.serve).
+        let mut state = None;
         for (question, plan) in record.questions.iter().zip(&plans) {
             let alone = Record {
                 state: record.state.clone(),
@@ -512,9 +541,21 @@ impl LocalEngine {
             let probabilities = self.probabilities(&mut *backend, &encoding)?;
             input_tokens += encoding.ids.len();
             answers.insert(plan.id.clone(), readout::answer(&probabilities[0], plan)?);
+            state = Some(encoding);
         }
+        let state = match state {
+            Some(encoding) => encoding,
+            None => self.encode(&mut *backend, &record)?,
+        };
 
-        self.respond(request, &mut *backend, answers, input_tokens, started)
+        self.respond(
+            request,
+            &mut *backend,
+            answers,
+            input_tokens,
+            &state,
+            started,
+        )
     }
 
     fn encode(&self, backend: &mut dyn Forward, record: &Record) -> Result<Encoding> {
@@ -525,9 +566,14 @@ impl LocalEngine {
             option_end: backend.delimiter(SPECIAL[3])?,
             decide: backend.delimiter(SPECIAL[4])?,
         };
-        encode::encode(record, &delimiters, self.limits, self.isolation, |text| {
-            backend.tokenise(text)
-        })
+        encode::encode(
+            record,
+            &delimiters,
+            self.limits,
+            self.isolation,
+            self.truncate_states,
+            |text| backend.tokenise(text),
+        )
     }
 
     /// One forward pass, then the pointer head: a distribution per question.
@@ -590,19 +636,28 @@ impl LocalEngine {
         backend: &mut dyn Forward,
         answers: IndexMap<String, Answer>,
         input_tokens: usize,
+        state: &Encoding,
         started: Instant,
     ) -> Result<SystemOneResponse> {
         // Not generated tokens - there are none. The server bills the
         // serialised answers, so this counts the same string.
         let output_tokens = backend.tokenise(&readout::answers_json(&answers))?.len();
+        // Server._body: only an engine that may cut says whether it did, so
+        // the body is otherwise the one the TypeSafe clients have always read.
+        let marks = self
+            .truncate_states
+            .then(|| (state.state_tokens as u64, state.state_tokens_used() as u64));
         Ok(SystemOneResponse {
             model: request.model.clone().unwrap_or_else(|| self.model.clone()),
             answers,
             usage: Usage {
                 input_tokens: input_tokens as u64,
                 output_tokens: output_tokens as u64,
+                state_tokens: marks.map(|(whole, _)| whole),
+                state_tokens_used: marks.map(|(_, used)| used),
             },
             latency_ms: Some((started.elapsed().as_secs_f64() * 10_000.0).round() / 10.0),
+            truncated: marks.map(|(whole, used)| whole > used),
         })
     }
 
